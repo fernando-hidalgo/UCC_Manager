@@ -13,7 +13,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="styles.css?v=3">
+  <link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body class="is-login">
   <div id="view-login" class="view view--login">
@@ -76,6 +76,16 @@
         data-tab="list"
       >
         Códigos
+      </button>
+      <button
+        class="tabs__btn"
+        role="tab"
+        aria-selected="false"
+        aria-controls="panel-cartelera"
+        id="tab-cartelera"
+        data-tab="cartelera"
+      >
+        Cartelera
       </button>
       <button
         class="tabs__btn"
@@ -193,6 +203,108 @@
         </form>
       </section>
 
+      <section class="panel" id="panel-cartelera" role="tabpanel" aria-labelledby="tab-cartelera" hidden>
+        <p id="cartelera-message" class="list-message" hidden aria-live="polite"></p>
+        <div id="cartelera-view-loading" class="cartelera-view" hidden>
+          <div class="cartelera-loading" role="status" aria-live="polite">
+            <span class="cartelera-loading__spinner" aria-hidden="true"></span>
+            <p class="cartelera-loading__text" id="cartelera-loading-text">Cargando…</p>
+          </div>
+        </div>
+        <div id="cartelera-view-cines" class="cartelera-view" hidden>
+          <div class="cine-picker-head">
+            <p class="cartelera-heading">Elige cine</p>
+            <label class="form__check cine-remember">
+              <input type="checkbox" id="cine-remember">
+              <span>Recordar cine</span>
+            </label>
+          </div>
+          <div id="cine-list" class="cine-list" role="list"></div>
+        </div>
+        <div id="cartelera-view-grid" class="cartelera-view" hidden>
+          <p id="cartelera-cine-label" class="cartelera-cine-label" hidden></p>
+          <div id="cartelera-grid" class="cartelera-grid" aria-live="polite"></div>
+          <div id="cartelera-empty" class="empty-state" hidden>
+            <p class="empty-state__title">Sin cartelera</p>
+            <p class="empty-state__text" id="cartelera-empty-text">No se pudieron cargar las películas</p>
+          </div>
+          <button type="button" class="btn btn--ghost cartelera-change-cine" id="cartelera-change-cine">
+            Cambiar cine
+          </button>
+        </div>
+        <div id="cartelera-view-film" class="cartelera-view" hidden>
+          <button type="button" class="btn btn--ghost cartelera-back" data-cartelera-back="grid">← Cartelera</button>
+          <div class="film-hero">
+            <img id="film-poster" class="film-hero__poster" alt="" width="140" height="210">
+            <div class="film-hero__body">
+              <h2 id="film-title" class="film-hero__title"></h2>
+              <p id="film-meta" class="film-hero__meta"></p>
+            </div>
+          </div>
+          <p id="film-synopsis" class="film-hero__synopsis"></p>
+          <button type="button" class="film-synopsis-more" id="film-synopsis-more" hidden>Ver más</button>
+          <label class="form__label" for="film-date">Fecha</label>
+          <select id="film-date" class="form__input"></select>
+          <div id="film-sessions" class="session-chips" role="list"></div>
+        </div>
+        <div id="cartelera-view-tickets" class="cartelera-view" hidden>
+          <button type="button" class="btn btn--ghost cartelera-back" data-cartelera-back="film">← Película</button>
+          <p class="cartelera-film-title" data-booking-film-title hidden></p>
+          <p id="tickets-heading" class="cartelera-heading"></p>
+          <div id="promo-block" class="promo-block" hidden>
+            <label class="form__label" for="promo-ref">Vuelve por 6 €</label>
+            <select id="promo-ref" class="form__input">
+              <option value="">Sin descuento</option>
+            </select>
+          </div>
+          <div id="price-list" class="price-list"></div>
+          <h3 class="cartelera-subhead">Menús (opcional)</h3>
+          <div id="menu-list" class="price-list"></div>
+          <button type="button" class="btn btn--primary cartelera-continue" id="tickets-continue" disabled>Continuar</button>
+        </div>
+        <div id="cartelera-view-seats" class="cartelera-view" hidden>
+          <button type="button" class="btn btn--ghost cartelera-back" data-cartelera-back="tickets">← Entradas</button>
+          <p class="cartelera-film-title" data-booking-film-title hidden></p>
+          <p id="seats-hint" class="cartelera-heading"></p>
+          <div class="seat-legend" aria-hidden="true">
+            <span class="seat-legend__item"><i class="seat seat--available"></i> Libre</span>
+            <span class="seat-legend__item"><i class="seat seat--selected"></i> Elegida</span>
+            <span class="seat-legend__item"><i class="seat"></i> Ocupada</span>
+            <span class="seat-legend__item"><i class="seat seat--available seat--pmr"></i> PMR</span>
+          </div>
+          <div id="seat-map" class="seat-map" role="group" aria-label="Mapa de butacas"></div>
+          <p id="seats-selection" class="seats-selection" aria-live="polite">Aún no se han elegido butacas</p>
+          <button type="button" class="btn btn--primary cartelera-continue" id="seats-continue" disabled>Continuar</button>
+        </div>
+        <div id="cartelera-view-confirm" class="cartelera-view" hidden>
+          <button type="button" class="btn btn--ghost cartelera-back" data-cartelera-back="seats">← Butacas</button>
+          <p class="cartelera-film-title" data-booking-film-title hidden></p>
+          <p class="cartelera-heading">Datos para la reserva</p>
+          <form id="confirm-form" class="form">
+            <div class="form__group">
+              <label class="form__label" for="pay-email">Email</label>
+              <input type="email" id="pay-email" class="form__input" required autocomplete="email">
+            </div>
+            <div class="form__group">
+              <label class="form__label" for="pay-email2">Repite email</label>
+              <input type="email" id="pay-email2" class="form__input" required autocomplete="email">
+            </div>
+            <div class="form__group">
+              <label class="form__label" for="pay-phone">Teléfono</label>
+              <input type="tel" id="pay-phone" class="form__input" required autocomplete="tel" inputmode="tel">
+            </div>
+            <label class="form__check">
+              <input type="checkbox" id="pay-privacy" required>
+              <span>Acepto la política de privacidad y las condiciones de compra</span>
+            </label>
+            <button type="submit" class="btn btn--primary cartelera-continue" id="pay-submit">
+              <span class="btn__label">Aceptar y pagar</span>
+              <span class="btn__spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+        </div>
+      </section>
+
       <section class="panel" id="panel-tickets" role="tabpanel" aria-labelledby="tab-tickets" hidden>
         <div class="list-toolbar">
           <span class="list-toolbar__label">Ordenar por</span>
@@ -225,7 +337,7 @@
             </svg>
           </div>
           <p class="empty-state__title">Sin entradas todavía</p>
-          <p class="empty-state__text">Guarda tu entrada en el paso final de compra o añade su referencia</p>
+          <p class="empty-state__text">Compra desde Cartelera o pega la referencia de tu entrada</p>
         </div>
       </section>
     </main>
@@ -257,6 +369,8 @@
       </div>
     </div>
   </div>
+
+  <form id="pay-gateway-form" method="POST" hidden aria-hidden="true"></form>
 
   <script src="barcode.js"></script>
   <script type="module" src="app.js"></script>

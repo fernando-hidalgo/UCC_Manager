@@ -2,6 +2,7 @@ const { setGlobalOptions } = require("firebase-functions/v2");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { GoogleAuth } = require("google-auth-library");
+const booking = require("./booking");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
@@ -116,7 +117,24 @@ function parseEntradaHtml(html, referencia) {
   };
 }
 
+/** Clasifica /Entrada/{ref}: ok | pending | error | unknown */
+function entradaStatus(html, parsed) {
+  const h = String(html || "");
+  if (/Operaci[oó]n\s+PENDIENTE/i.test(h) || /compra est[aá]\s+PENDIENTE/i.test(h)) {
+    return "pending";
+  }
+  if (
+    /Error en el proceso de pago/i.test(h) ||
+    /NO se ha realizado con [eé]xito/i.test(h)
+  ) {
+    return "error";
+  }
+  if (parsed?.accessCode && parsed?.qrPath && parsed?.barcodePath) return "ok";
+  return "unknown";
+}
+
 exports.parseEntradaHtml = parseEntradaHtml;
+exports.entradaStatus = entradaStatus;
 exports.parseValidationResult = parseValidationResult;
 
 exports.validateCode = onCall(async (request) => {
@@ -271,12 +289,13 @@ exports.fetchEntrada = onCall(
         headers: { Accept: "text/html" },
       });
       if (!pageRes.ok) {
-        return { found: false };
+        return { found: false, status: "unknown", referencia };
       }
       const html = await pageRes.text();
       const parsed = parseEntradaHtml(html, referencia);
-      if (!parsed.accessCode || !parsed.qrPath || !parsed.barcodePath) {
-        return { found: false };
+      const status = entradaStatus(html, parsed);
+      if (status !== "ok") {
+        return { found: false, status, referencia: parsed.referencia || referencia };
       }
 
       const [qrRes, barcodeRes] = await Promise.all([
@@ -284,7 +303,7 @@ exports.fetchEntrada = onCall(
         fetch(`https://www.compraentradas.com${parsed.barcodePath}`),
       ]);
       if (!qrRes.ok || !barcodeRes.ok) {
-        return { found: false };
+        return { found: false, status: "unknown", referencia };
       }
 
       const [qrDataUrl, barcodeDataUrl] = await Promise.all([
@@ -294,6 +313,7 @@ exports.fetchEntrada = onCall(
 
       return {
         found: true,
+        status: "ok",
         accessCode: parsed.accessCode,
         referencia: parsed.referencia || referencia,
         title: parsed.title,
@@ -307,7 +327,67 @@ exports.fetchEntrada = onCall(
     } catch (err) {
       if (err instanceof HttpsError) throw err;
       console.error("fetchEntrada", err);
-      return { found: false };
+      return { found: false, status: "unknown", referencia };
     }
   },
 );
+
+const bookingOpts = { timeoutSeconds: 60, memory: "256MiB" };
+
+function wrapBooking(fn) {
+  return onCall(bookingOpts, async (request) => {
+    requireAuth(request);
+    try {
+      return await fn(request.auth.uid, request.data || {});
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error(fn.name || "booking", err);
+      throw new HttpsError("internal", err?.message || "Error en la compra.");
+    }
+  });
+}
+
+exports.getCartelera = onCall(bookingOpts, async (request) => {
+  requireAuth(request);
+  try {
+    return await booking.getCartelera(request.data || {});
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error("getCartelera", err);
+    throw new HttpsError("internal", "No se pudo cargar la cartelera.");
+  }
+});
+
+exports.getPelicula = onCall(bookingOpts, async (request) => {
+  requireAuth(request);
+  try {
+    return await booking.getPelicula(request.data || {});
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error("getPelicula", err);
+    throw new HttpsError("internal", "No se pudo cargar la película.");
+  }
+});
+
+exports.getHorarios = onCall(bookingOpts, async (request) => {
+  requireAuth(request);
+  try {
+    return await booking.getHorarios(request.data || {});
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error("getHorarios", err);
+    throw new HttpsError("internal", "No se pudieron cargar los horarios.");
+  }
+});
+
+exports.startSesion = wrapBooking(booking.startSesion);
+exports.guardarEntradas = wrapBooking(booking.guardarEntradas);
+exports.getButacas = wrapBooking(booking.getButacas);
+exports.guardarButacas = wrapBooking(booking.guardarButacas);
+exports.generarPago = wrapBooking(booking.generarPago);
+
+exports.parseCarteleraHtml = booking.parseCarteleraHtml;
+exports.parsePeliculaHtml = booking.parsePeliculaHtml;
+exports.parseHorariosHtml = booking.parseHorariosHtml;
+exports.parseSesionHtml = booking.parseSesionHtml;
+exports.parseButacasHtml = booking.parseButacasHtml;

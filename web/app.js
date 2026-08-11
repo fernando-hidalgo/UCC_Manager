@@ -11,6 +11,16 @@ import {
   upsertTicket,
   validateCodeRemote,
   fetchEntradaRemote,
+  getCarteleraRemote,
+  getPeliculaRemote,
+  getHorariosRemote,
+  startSesionRemote,
+  guardarEntradasRemote,
+  getButacasRemote,
+  guardarButacasRemote,
+  generarPagoRemote,
+  getPreferredCineRemote,
+  setPreferredCineRemote,
 } from "./firebase.js";
 import { readTicketImage } from "./ocr.js";
 
@@ -331,6 +341,9 @@ function activateTab(tabId) {
     panel.hidden = !show;
   });
   addCodeBtn.hidden = tabId === "add";
+  if (tabId === "cartelera") {
+    ensureCarteleraLoaded();
+  }
 }
 
 const SORT_ARROW_PATHS = {
@@ -510,6 +523,17 @@ function createTicketCard(ticket) {
   actions.append(viewBtn, deleteBtn);
   card.append(header, meta, actions);
   return card;
+}
+
+async function storeTicket(ticket) {
+  const exists = tickets.some((t) => t.accessCode === ticket.accessCode);
+  await upsertTicket(user.uid, ticket);
+  saveTicketsCache(
+    exists
+      ? tickets.map((t) => (t.accessCode === ticket.accessCode ? ticket : t))
+      : [...tickets, ticket],
+  );
+  renderTickets();
 }
 
 function renderTickets() {
@@ -916,6 +940,12 @@ function leaveApp() {
   ticketList.innerHTML = "";
   closeTicketOverlay();
   clearForm();
+  booking.loaded = false;
+  booking.cine = null;
+  booking.films = [];
+  preferredCineId = "";
+  preferredCineLoaded = false;
+  resetBookingSession();
   showView("login");
   hideLoginMessage();
 }
@@ -950,6 +980,758 @@ tabButtons.forEach((btn) => {
 addCodeBtn.addEventListener("click", () => {
   activateTab("add");
   codeInput.focus();
+});
+
+/* —— Cartelera booking —— */
+const carteleraMessage = document.getElementById("cartelera-message");
+const carteleraLoadingText = document.getElementById("cartelera-loading-text");
+const carteleraGrid = document.getElementById("cartelera-grid");
+const carteleraEmpty = document.getElementById("cartelera-empty");
+const carteleraEmptyText = document.getElementById("cartelera-empty-text");
+const carteleraCineLabel = document.getElementById("cartelera-cine-label");
+const carteleraChangeCine = document.getElementById("cartelera-change-cine");
+const cineList = document.getElementById("cine-list");
+const cineRemember = document.getElementById("cine-remember");
+const filmPoster = document.getElementById("film-poster");
+const filmTitle = document.getElementById("film-title");
+const filmMeta = document.getElementById("film-meta");
+const filmSynopsis = document.getElementById("film-synopsis");
+const filmSynopsisMore = document.getElementById("film-synopsis-more");
+const filmDate = document.getElementById("film-date");
+const filmSessions = document.getElementById("film-sessions");
+const ticketsHeading = document.getElementById("tickets-heading");
+const priceList = document.getElementById("price-list");
+const menuList = document.getElementById("menu-list");
+const promoBlock = document.getElementById("promo-block");
+const promoRef = document.getElementById("promo-ref");
+const ticketsContinue = document.getElementById("tickets-continue");
+const seatsHint = document.getElementById("seats-hint");
+const seatMap = document.getElementById("seat-map");
+const seatsSelection = document.getElementById("seats-selection");
+const SEATS_EMPTY_HINT = "Aún no se han elegido butacas";
+const seatsContinue = document.getElementById("seats-continue");
+const confirmForm = document.getElementById("confirm-form");
+const payEmail = document.getElementById("pay-email");
+const payEmail2 = document.getElementById("pay-email2");
+const payPhone = document.getElementById("pay-phone");
+const paySubmit = document.getElementById("pay-submit");
+const payGatewayForm = document.getElementById("pay-gateway-form");
+
+const CINES = [
+  { id: "10", slug: "metromar-cinemas", name: "Metromar Cinemas" },
+  { id: "48", slug: "cine-cervantes", name: "Cine Cervantes" },
+];
+
+let preferredCineId = "";
+let preferredCineLoaded = false;
+
+const carteleraViews = {
+  loading: document.getElementById("cartelera-view-loading"),
+  cines: document.getElementById("cartelera-view-cines"),
+  grid: document.getElementById("cartelera-view-grid"),
+  film: document.getElementById("cartelera-view-film"),
+  tickets: document.getElementById("cartelera-view-tickets"),
+  seats: document.getElementById("cartelera-view-seats"),
+  confirm: document.getElementById("cartelera-view-confirm"),
+};
+
+let booking = {
+  loaded: false,
+  cine: null,
+  films: [],
+  film: null,
+  date: "",
+  sessions: [],
+  bookingId: "",
+  heading: "",
+  prices: [],
+  menus: [],
+  qtys: [],
+  menuQtys: {},
+  ticketQty: 0,
+  seats: [],
+  selectedSeats: [],
+  needSeats: 0,
+  busy: false,
+};
+
+function resetBookingSession() {
+  booking.bookingId = "";
+  booking.heading = "";
+  booking.prices = [];
+  booking.menus = [];
+  booking.qtys = [];
+  booking.menuQtys = {};
+  booking.ticketQty = 0;
+  booking.seats = [];
+  booking.selectedSeats = [];
+  booking.needSeats = 0;
+  if (seatsSelection) seatsSelection.textContent = SEATS_EMPTY_HINT;
+}
+
+function showCarteleraMessage(text, type = "info") {
+  if (!carteleraMessage) return;
+  if (!text) {
+    carteleraMessage.hidden = true;
+    carteleraMessage.textContent = "";
+    return;
+  }
+  carteleraMessage.hidden = false;
+  carteleraMessage.textContent = text;
+  carteleraMessage.className = `list-message list-message--${type}`;
+}
+
+function showCarteleraView(name) {
+  Object.entries(carteleraViews).forEach(([key, el]) => {
+    if (!el) return;
+    el.hidden = key !== name;
+  });
+  if (name === "tickets" || name === "seats" || name === "confirm") {
+    syncBookingFilmTitles();
+  }
+}
+
+function syncBookingFilmTitles() {
+  const title = booking.film?.title || "";
+  document.querySelectorAll("[data-booking-film-title]").forEach((el) => {
+    el.textContent = title;
+    el.hidden = !title;
+  });
+}
+
+function showCarteleraLoading(text) {
+  if (carteleraLoadingText) carteleraLoadingText.textContent = text || "Cargando…";
+  showCarteleraMessage("");
+  showCarteleraView("loading");
+}
+
+function errMsg(err) {
+  const m = String(err?.message || err?.code || "Error inesperado.");
+  return m.replace(/^Firebase:\s*/i, "").replace(/\s*\([^)]*\)\s*$/, "").trim() || m;
+}
+
+function fillPromoSelect() {
+  if (!promoRef) return;
+  const prev = promoRef.value;
+  promoRef.replaceChildren();
+  const none = document.createElement("option");
+  none.value = "";
+  none.textContent = "Sin descuento";
+  promoRef.appendChild(none);
+  for (const entry of codes) {
+    const opt = document.createElement("option");
+    opt.value = entry.code;
+    opt.textContent = `${entry.code} · ${entry.seats} butaca${entry.seats === 1 ? "" : "s"}`;
+    promoRef.appendChild(opt);
+  }
+  if ([...promoRef.options].some((o) => o.value === prev)) promoRef.value = prev;
+}
+
+async function loadPreferredCineId() {
+  if (!user) return "";
+  if (preferredCineLoaded) return preferredCineId;
+  try {
+    const id = await getPreferredCineRemote(user.uid);
+    preferredCineId = CINES.some((c) => c.id === id) ? id : "";
+  } catch (err) {
+    console.error(err);
+    preferredCineId = "";
+  }
+  preferredCineLoaded = true;
+  return preferredCineId;
+}
+
+async function savePreferredCineId(id) {
+  const next = id && CINES.some((c) => c.id === id) ? id : "";
+  preferredCineId = next;
+  preferredCineLoaded = true;
+  if (!user) return;
+  try {
+    await setPreferredCineRemote(user.uid, next || null);
+  } catch (err) {
+    console.error(err);
+    preferredCineId = "";
+    if (cineRemember) cineRemember.checked = false;
+    showCarteleraMessage("No se pudo guardar el cine preferido.", "error");
+    throw err;
+  }
+}
+
+function cineById(id) {
+  return CINES.find((c) => c.id === id) || null;
+}
+
+function renderCinePicker() {
+  if (!cineList) return;
+  cineList.replaceChildren();
+  if (cineRemember) cineRemember.checked = Boolean(preferredCineId);
+  for (const cine of CINES) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn--primary cine-list__btn";
+    btn.textContent = cine.name;
+    btn.dataset.cineId = cine.id;
+    btn.addEventListener("click", () => selectCine(cine));
+    cineList.appendChild(btn);
+  }
+}
+
+async function selectCine(cine) {
+  try {
+    if (cineRemember?.checked) await savePreferredCineId(cine.id);
+    else await savePreferredCineId(null);
+  } catch {
+    /* mensaje ya mostrado; seguimos cargando el cine elegido esta sesión */
+  }
+  booking.cine = cine;
+  booking.loaded = false;
+  booking.films = [];
+  resetBookingSession();
+  loadCartelera();
+}
+
+async function showCinePicker() {
+  resetBookingSession();
+  booking.loaded = false;
+  booking.films = [];
+  booking.cine = null;
+  booking.film = null;
+  showCarteleraMessage("");
+  await loadPreferredCineId();
+  renderCinePicker();
+  showCarteleraView("cines");
+}
+
+async function ensureCarteleraLoaded() {
+  if (booking.loaded && booking.cine) {
+    showCarteleraView("grid");
+    return;
+  }
+  if (!booking.cine) {
+    await loadPreferredCineId();
+    const preferred = cineById(preferredCineId);
+    if (preferred) {
+      booking.cine = preferred;
+      await loadCartelera();
+      return;
+    }
+    await showCinePicker();
+    return;
+  }
+  await loadCartelera();
+}
+
+async function loadCartelera() {
+  if (!booking.cine) {
+    showCinePicker();
+    return;
+  }
+  showCarteleraLoading(`Cargando cartelera de ${booking.cine.name}…`);
+  try {
+    const data = await getCarteleraRemote(booking.cine.id);
+    booking.films = data.films || [];
+    if (data.cine) booking.cine = { ...booking.cine, ...data.cine };
+    booking.loaded = true;
+    renderCarteleraGrid();
+    showCarteleraView("grid");
+  } catch (err) {
+    console.error(err);
+    booking.films = [];
+    booking.loaded = false;
+    renderCarteleraGrid();
+    showCarteleraView("grid");
+    showCarteleraMessage(errMsg(err), "error");
+  }
+}
+
+function renderCarteleraGrid() {
+  carteleraGrid.replaceChildren();
+  carteleraEmpty.hidden = booking.films.length > 0;
+  if (carteleraCineLabel) {
+    carteleraCineLabel.hidden = !booking.cine;
+    carteleraCineLabel.textContent = booking.cine ? booking.cine.name : "";
+  }
+  if (carteleraEmptyText) {
+    carteleraEmptyText.textContent = booking.cine
+      ? `No se pudieron cargar las películas de ${booking.cine.name}`
+      : "No se pudieron cargar las películas";
+  }
+  for (const film of booking.films) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "film-card";
+    btn.innerHTML = `
+      <img class="film-card__poster" src="${film.poster}" alt="" loading="lazy" decoding="async">
+      <div class="film-card__body">
+        <div class="film-card__title"></div>
+        <div class="film-card__badge"></div>
+      </div>`;
+    btn.querySelector(".film-card__title").textContent = film.title;
+    btn.querySelector(".film-card__badge").textContent = film.badge || "";
+    btn.addEventListener("click", () => openFilm(film));
+    carteleraGrid.appendChild(btn);
+  }
+}
+
+carteleraChangeCine?.addEventListener("click", () => {
+  showCinePicker();
+});
+
+async function openFilm(filmBrief) {
+  if (!booking.cine) return;
+  showCarteleraLoading("Cargando película…");
+  resetBookingSession();
+  try {
+    const film = await getPeliculaRemote(booking.cine.id, filmBrief.filmId, filmBrief.slug);
+    booking.film = film;
+    filmPoster.src = film.poster || filmBrief.poster || "";
+    filmPoster.alt = film.title;
+    filmTitle.textContent = film.title;
+    const metaBits = [film.originalTitle, film.genre, film.director, film.duration].filter(Boolean);
+    filmMeta.textContent = metaBits.join(" · ");
+    filmSynopsis.textContent = film.synopsis || "";
+    filmSynopsis.classList.remove("is-expanded");
+    if (filmSynopsisMore) {
+      filmSynopsisMore.hidden = !film.synopsis;
+      filmSynopsisMore.textContent = "Ver más";
+    }
+    filmDate.replaceChildren();
+    for (const d of film.dates || []) {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = d;
+      filmDate.appendChild(opt);
+    }
+    booking.date = film.dates?.[0] || "";
+    filmDate.value = booking.date;
+    await loadHorarios();
+    showCarteleraView("film");
+  } catch (err) {
+    console.error(err);
+    showCarteleraView("grid");
+    showCarteleraMessage(errMsg(err), "error");
+  }
+}
+
+async function loadHorarios() {
+  if (!booking.cine || !booking.film || !booking.date) return;
+  resetBookingSession();
+  filmSessions.replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "cartelera-copy";
+  loading.textContent = "Cargando sesiones…";
+  filmSessions.appendChild(loading);
+  try {
+    const data = await getHorariosRemote(booking.cine.id, booking.film.filmId, booking.date);
+    booking.sessions = data.sessions || [];
+    filmSessions.replaceChildren();
+    if (!booking.sessions.length) {
+      const empty = document.createElement("p");
+      empty.className = "cartelera-copy";
+      empty.textContent = "Sin sesiones este día.";
+      filmSessions.appendChild(empty);
+      return;
+    }
+    for (const s of booking.sessions) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "session-chip";
+      chip.textContent = s.format ? `${s.time} · ${s.format}` : s.time;
+      chip.addEventListener("click", () => startSession(s, chip));
+      filmSessions.appendChild(chip);
+    }
+  } catch (err) {
+    console.error(err);
+    filmSessions.replaceChildren();
+    showCarteleraMessage(errMsg(err), "error");
+  }
+}
+
+async function startSession(session, chip) {
+  if (booking.busy) return;
+  booking.busy = true;
+  chip.disabled = true;
+  showCarteleraLoading("Preparando entradas…");
+  try {
+    const data = await startSesionRemote({
+      cineId: booking.cine.id,
+      sessionId: session.sessionId,
+      slug: session.slug || booking.film.slug,
+      plantaId: session.plantaId || "1",
+    });
+    booking.bookingId = data.bookingId;
+    booking.heading = data.heading || "";
+    booking.prices = data.prices || [];
+    booking.menus = data.menus || [];
+    booking.qtys = booking.prices.map(() => 0);
+    booking.menuQtys = {};
+    booking.selectedSeats = [];
+    ticketsHeading.textContent = booking.heading;
+    promoBlock.hidden = !data.promoEnabled;
+    fillPromoSelect();
+    promoRef.value = "";
+    renderPrices();
+    renderMenus();
+    updateTicketsContinue();
+    showCarteleraView("tickets");
+  } catch (err) {
+    console.error(err);
+    showCarteleraView("film");
+    showCarteleraMessage(errMsg(err), "error");
+  } finally {
+    booking.busy = false;
+    chip.disabled = false;
+  }
+}
+
+function totalTickets() {
+  return booking.qtys.reduce((a, b) => a + b, 0);
+}
+
+function renderPrices() {
+  priceList.replaceChildren();
+  booking.prices.forEach((p, i) => {
+    const row = document.createElement("div");
+    row.className = "price-row";
+    row.innerHTML = `
+      <div class="price-row__info">
+        <div class="price-row__label"></div>
+        <div class="price-row__price"></div>
+      </div>
+      <div class="qty-stepper">
+        <button type="button" class="qty-stepper__btn" data-dir="-1" aria-label="Menos">−</button>
+        <span class="qty-stepper__val">0</span>
+        <button type="button" class="qty-stepper__btn" data-dir="1" aria-label="Más">+</button>
+      </div>`;
+    row.querySelector(".price-row__label").textContent = p.label;
+    row.querySelector(".price-row__price").textContent = p.priceText || "";
+    const valEl = row.querySelector(".qty-stepper__val");
+    row.querySelectorAll(".qty-stepper__btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dir = Number(btn.dataset.dir);
+        let next = booking.qtys[i] + dir;
+        if (next < 0) next = 0;
+        if (p.isFamilia && next > 0 && next < (p.min || 3)) {
+          next = dir > 0 ? p.min || 3 : 0;
+        }
+        if (p.isFamilia) next = Math.min(next, p.max || 6);
+        const others = totalTickets() - booking.qtys[i];
+        if (others + next > 10) next = 10 - others;
+        booking.qtys[i] = Math.max(0, next);
+        valEl.textContent = String(booking.qtys[i]);
+        updateTicketsContinue();
+      });
+    });
+    priceList.appendChild(row);
+  });
+}
+
+function renderMenus() {
+  menuList.replaceChildren();
+  if (!booking.menus.length) {
+    const empty = document.createElement("p");
+    empty.className = "cartelera-copy";
+    empty.textContent = "Sin menús para esta sesión.";
+    menuList.appendChild(empty);
+    return;
+  }
+  for (const m of booking.menus) {
+    booking.menuQtys[m.index] = booking.menuQtys[m.index] || 0;
+    const row = document.createElement("div");
+    row.className = "price-row";
+    row.innerHTML = `
+      <div class="price-row__info">
+        <div class="price-row__label"></div>
+        <div class="price-row__price"></div>
+      </div>
+      <div class="qty-stepper">
+        <button type="button" class="qty-stepper__btn" data-dir="-1" aria-label="Menos">−</button>
+        <span class="qty-stepper__val">0</span>
+        <button type="button" class="qty-stepper__btn" data-dir="1" aria-label="Más">+</button>
+      </div>`;
+    row.querySelector(".price-row__label").textContent = m.name;
+    row.querySelector(".price-row__price").textContent = m.priceText || "";
+    const valEl = row.querySelector(".qty-stepper__val");
+    row.querySelectorAll(".qty-stepper__btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const dir = Number(btn.dataset.dir);
+        let next = (booking.menuQtys[m.index] || 0) + dir;
+        if (next < 0) next = 0;
+        if (next > 10) next = 10;
+        booking.menuQtys[m.index] = next;
+        valEl.textContent = String(next);
+      });
+    });
+    menuList.appendChild(row);
+  }
+}
+
+function updateTicketsContinue() {
+  ticketsContinue.disabled = totalTickets() < 1 || booking.busy;
+}
+
+ticketsContinue?.addEventListener("click", async () => {
+  if (booking.busy || totalTickets() < 1) return;
+  booking.busy = true;
+  ticketsContinue.disabled = true;
+  showCarteleraLoading("Cargando asientos");
+  try {
+    const res = await guardarEntradasRemote({
+      bookingId: booking.bookingId,
+      quantities: booking.qtys,
+      menus: booking.menuQtys,
+      referencia: promoRef.value.trim(),
+    });
+    booking.ticketQty = res.ticketQty || totalTickets();
+    const map = await getButacasRemote(booking.bookingId);
+    booking.seats = map.seats || [];
+    booking.needSeats = map.numButacas || booking.ticketQty;
+    booking.selectedSeats = [];
+    setSeatsSelectionHint();
+    if (!map.numerada || !booking.seats.some((s) => s.available)) {
+      showCarteleraView("confirm");
+    } else {
+      seatsHint.textContent = `Elige ${booking.needSeats} butaca${booking.needSeats === 1 ? "" : "s"}`;
+      renderSeatMap();
+      updateSeatsContinue();
+      showCarteleraView("seats");
+    }
+  } catch (err) {
+    console.error(err);
+    showCarteleraView("tickets");
+    showCarteleraMessage(errMsg(err), "error");
+  } finally {
+    booking.busy = false;
+    updateTicketsContinue();
+  }
+});
+
+function clearSeatSelectionUi() {
+  seatMap.querySelectorAll(".seat--selected").forEach((el) => {
+    el.classList.remove("seat--selected");
+    if (!el.classList.contains("seat--taken")) el.classList.add("seat--available");
+  });
+}
+
+function setSeatsSelectionHint(text = SEATS_EMPTY_HINT) {
+  if (seatsSelection) seatsSelection.textContent = text;
+}
+
+function renderSeatMap() {
+  seatMap.replaceChildren();
+  const inner = document.createElement("div");
+  inner.className = "seat-map__inner";
+
+  const byFila = new Map();
+  for (const s of booking.seats) {
+    const f = s.fila || "?";
+    if (!byFila.has(f)) byFila.set(f, []);
+    byFila.get(f).push(s);
+  }
+
+  // Filas de lejos a cerca; la pantalla va debajo (como en compraentradas).
+  const filas = [...byFila.keys()].sort((a, b) => Number(b) - Number(a));
+  for (const fila of filas) {
+    const seats = byFila.get(fila);
+    seats.sort((a, b) => Number(a.col) - Number(b.col));
+    const row = document.createElement("div");
+    row.className = "seat-row";
+    const labelL = document.createElement("span");
+    labelL.className = "seat-row__label";
+    labelL.textContent = fila;
+    row.appendChild(labelL);
+
+    let prevCol = null;
+    for (const s of seats) {
+      const colNum = Number(s.col);
+      if (prevCol != null && Number.isFinite(colNum) && colNum - prevCol > 1) {
+        for (let g = prevCol + 1; g < colNum; g++) {
+          const gap = document.createElement("span");
+          gap.className = "seat-aisle";
+          gap.setAttribute("aria-hidden", "true");
+          row.appendChild(gap);
+        }
+      }
+      prevCol = colNum;
+
+      if (s.aisle) {
+        const gap = document.createElement("span");
+        gap.className = "seat-aisle";
+        gap.setAttribute("aria-hidden", "true");
+        gap.title = "Pasillo";
+        row.appendChild(gap);
+        continue;
+      }
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "seat";
+      const label = s.colReal && s.colReal !== "0" ? s.colReal : s.col || "";
+      btn.textContent = label;
+      btn.title = `Fila ${s.fila} · ${label}`;
+      btn.dataset.id = s.id;
+      if (s.pmr) btn.classList.add("seat--pmr");
+      if (s.available) {
+        btn.classList.add("seat--available");
+        btn.addEventListener("click", () => selectContiguousFrom(s));
+      } else {
+        btn.classList.add("seat--taken");
+      }
+      row.appendChild(btn);
+    }
+
+    const labelR = document.createElement("span");
+    labelR.className = "seat-row__label";
+    labelR.textContent = fila;
+    row.appendChild(labelR);
+    inner.appendChild(row);
+  }
+
+  const screen = document.createElement("div");
+  screen.className = "seat-map__screen";
+  screen.textContent = "PANTALLA";
+  inner.appendChild(screen);
+  seatMap.appendChild(inner);
+}
+
+/** Mirror compraentradas: pick N contiguous seats from clicked seat in same row. */
+function selectContiguousFrom(start) {
+  if (start.aisle || !start.available) return;
+  const need = booking.needSeats;
+  const rowSeats = booking.seats
+    .filter((s) => s.fila === start.fila)
+    .sort((a, b) => Number(a.col) - Number(b.col));
+  const picked = [];
+  for (let i = 0; i < need; i++) {
+    const seat = rowSeats.find((s) => Number(s.col) === Number(start.col) + i);
+    if (!seat || seat.aisle || !seat.available) {
+      seatsSelection.textContent = "No caben tantas butacas seguidas aquí.";
+      return;
+    }
+    picked.push(seat.id);
+  }
+  clearSeatSelectionUi();
+  booking.selectedSeats = picked;
+  for (const id of picked) {
+    const el = seatMap.querySelector(`.seat[data-id="${CSS.escape(id)}"]`);
+    if (!el) continue;
+    el.classList.add("seat--selected");
+    el.classList.remove("seat--available");
+  }
+  const labels = picked.map((id) => {
+    const s = booking.seats.find((x) => x.id === id);
+    return s ? s.colReal || s.col : id;
+  });
+  seatsSelection.textContent =
+    need > 1
+      ? `${need} butacas · fila ${start.fila} · ${labels.join(", ")}`
+      : `Fila ${start.fila} · butaca ${labels[0]}`;
+  updateSeatsContinue();
+}
+
+function updateSeatsContinue() {
+  seatsContinue.disabled =
+    booking.busy || booking.selectedSeats.length !== booking.needSeats;
+}
+
+seatsContinue?.addEventListener("click", async () => {
+  if (booking.busy || booking.selectedSeats.length !== booking.needSeats) return;
+  booking.busy = true;
+  seatsContinue.disabled = true;
+  showCarteleraLoading("Guardando butacas…");
+  try {
+    await guardarButacasRemote(booking.bookingId, booking.selectedSeats);
+    showCarteleraView("confirm");
+  } catch (err) {
+    console.error(err);
+    showCarteleraView("seats");
+    showCarteleraMessage(errMsg(err), "error");
+  } finally {
+    booking.busy = false;
+    updateSeatsContinue();
+  }
+});
+
+function submitPayForm(destino, params) {
+  payGatewayForm.action = destino;
+  payGatewayForm.method = "POST";
+  payGatewayForm.removeAttribute("target");
+  payGatewayForm.replaceChildren();
+  for (const [name, value] of Object.entries(params || {})) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    payGatewayForm.appendChild(input);
+  }
+  payGatewayForm.submit();
+}
+
+confirmForm?.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (booking.busy) return;
+  const email = payEmail.value.trim();
+  const email2 = payEmail2.value.trim();
+  const phone = payPhone.value.trim();
+  if (email !== email2) {
+    showCarteleraMessage("Los emails no coinciden.", "error");
+    return;
+  }
+  booking.busy = true;
+  paySubmit.disabled = true;
+  paySubmit.classList.add("btn--busy");
+  showCarteleraMessage("Redirigiendo al pago…");
+  try {
+    const pay = await generarPagoRemote({
+      bookingId: booking.bookingId,
+      email,
+      telefono: phone,
+    });
+    if (pay.freeEntry && pay.destino && /\/Entrada\//i.test(pay.destino)) {
+      window.location.href = pay.destino.startsWith("http")
+        ? pay.destino
+        : `https://www.compraentradas.com${pay.destino}`;
+      return;
+    }
+    submitPayForm(pay.destino, pay.params);
+  } catch (err) {
+    console.error(err);
+    showCarteleraMessage(errMsg(err), "error");
+  } finally {
+    booking.busy = false;
+    paySubmit.disabled = false;
+    paySubmit.classList.remove("btn--busy");
+  }
+});
+
+document.querySelectorAll("[data-cartelera-back]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const target = btn.dataset.carteleraBack;
+    showCarteleraMessage("");
+    if (target === "grid") {
+      booking.film = null;
+      resetBookingSession();
+      showCarteleraView("grid");
+    } else if (target === "film") {
+      resetBookingSession();
+      showCarteleraView("film");
+    } else if (target === "tickets") {
+      showCarteleraView("tickets");
+    } else if (target === "seats") {
+      showCarteleraView("seats");
+    }
+  });
+});
+
+filmDate?.addEventListener("change", () => {
+  booking.date = filmDate.value;
+  showCarteleraMessage("");
+  loadHorarios();
+});
+
+filmSynopsisMore?.addEventListener("click", () => {
+  const open = filmSynopsis.classList.toggle("is-expanded");
+  filmSynopsisMore.textContent = open ? "Ver menos" : "Ver más";
 });
 
 ocrScanBtn.addEventListener("click", () => ocrFileInput.click());
@@ -1053,16 +1835,7 @@ form.addEventListener("submit", async (e) => {
       formMsg = "Código guardado; la sesión ya pasó, no se añadió la entrada.";
       showListMessage(formMsg, "error");
     } else {
-      const exists = tickets.some((t) => t.accessCode === ticket.accessCode);
-      await upsertTicket(user.uid, ticket);
-      if (exists) {
-        saveTicketsCache(
-          tickets.map((t) => (t.accessCode === ticket.accessCode ? ticket : t)),
-        );
-      } else {
-        saveTicketsCache([...tickets, ticket]);
-      }
-      renderTickets();
+      await storeTicket(ticket);
       formMsg = "Código y entrada guardados.";
     }
   } catch (err) {

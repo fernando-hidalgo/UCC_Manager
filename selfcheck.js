@@ -147,18 +147,39 @@ assert(parsed.title === "EL DIA DE LA REVELACION", "parse title from alt");
 assert(parsed.qrPath.includes("Codigo=2100079266074"), "parse qr path");
 assert(parsed.showtime.includes("17/06/2026"), "parse showtime from html");
 
-function classifyEntradaScrape(pageOk, parsedTicket) {
-  if (!pageOk) return "no_entrada";
+function classifyEntradaScrape(pageOk, parsedTicket, html = "") {
+  if (!pageOk) return "unknown";
+  if (/Operaci[oó]n\s+PENDIENTE/i.test(html) || /compra est[aá]\s+PENDIENTE/i.test(html)) {
+    return "pending";
+  }
+  if (
+    /Error en el proceso de pago/i.test(html) ||
+    /NO se ha realizado con [eé]xito/i.test(html)
+  ) {
+    return "error";
+  }
   if (!parsedTicket?.accessCode || !parsedTicket?.qrPath || !parsedTicket?.barcodePath) {
-    return "no_entrada";
+    return "unknown";
   }
   return "ok";
 }
 
 const empty404 = parseEntradaHtml("<h1>ERROR 404</h1><p>¡La página solicitada no se encuentra!</p>", "999");
-assert(classifyEntradaScrape(false, {}) === "no_entrada", "http fail → no_entrada");
-assert(classifyEntradaScrape(true, empty404) === "no_entrada", "404 html → no_entrada");
+assert(classifyEntradaScrape(false, {}) === "unknown", "http fail → unknown");
+assert(classifyEntradaScrape(true, empty404) === "unknown", "404 html → unknown");
 assert(classifyEntradaScrape(true, parsed) === "ok", "full ticket → ok");
+assert(
+  classifyEntradaScrape(true, {}, "<h1>Operación PENDIENTE</h1><p>Su compra está PENDIENTE</p>") === "pending",
+  "pending page",
+);
+assert(
+  classifyEntradaScrape(
+    true,
+    {},
+    "<h1>¡Error en el proceso de pago!</h1><p>Su compra NO se ha realizado con éxito</p>",
+  ) === "error",
+  "error page",
+);
 
 function isShowtimePast(showtime, today = new Date()) {
   const m = String(showtime || "").match(/(\d{2})\/(\d{2})\/(\d{4})/);
@@ -239,5 +260,156 @@ Butaca Fila: 6, Butaca: 13 - 5,75 €.
 assert(countSeatLines(seatSample) === 2, "seat line count");
 assert(showtimeToCreatedAt("17/06/2026 - 19:30 - Sala 3") === "2026-06-17", "showtime to createdAt");
 assert(showtimeToCreatedAt("") === "2026-08-05", "empty showtime → today");
+
+function decodeHtml(s) {
+  return String(s || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+function absCe(path) {
+  if (!path) return "";
+  if (/^https?:\/\//i.test(path)) return path;
+  return `https://www.compraentradas.com${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function parseSesionHtml(html) {
+  const btsg = (html.match(/<meta\s+name=["']btsg["']\s+content=["']([^"']+)["']/i) || [])[1] || "";
+  const prices = [];
+  for (const block of html.split(/class=['"]LineaPrecios/i).slice(1)) {
+    const enc = (block.match(/name=["']CodigoPrecioButacas\[]["'][^>]*value=["']([^"']+)["']/i) || [])[1];
+    if (!enc) continue;
+    const isFamilia = /NumButacasFamilia|ButacasFamilia|\bfamilia\s+row\b/i.test(block);
+    prices.push({
+      label: decodeHtml((block.match(/<strong>([^<]+)<\/strong>/i) || [])[1] || "").trim(),
+      encryptedCode: enc,
+      isFamilia,
+    });
+  }
+  return { btsg, prices };
+}
+
+const {
+  CINES,
+  resolveCine,
+  parseCarteleraHtml,
+  parseHorariosHtml,
+  parseButacasHtml,
+  refFromMerchantParams,
+} = require("./functions/booking.js");
+
+assert(CINES["10"]?.slug === "metromar-cinemas", "metromar allowlist");
+assert(CINES["48"]?.slug === "cine-cervantes", "cervantes allowlist");
+assert(resolveCine("10").id === "10", "resolve metromar");
+assert(resolveCine("48").name === "Cine Cervantes", "resolve cervantes");
+try {
+  resolveCine("999");
+  assert(false, "resolve invalid should throw");
+} catch (err) {
+  assert(/Cine no válido/i.test(err.message), "resolve invalid message");
+}
+
+const metromar = CINES["10"];
+const cervantes = CINES["48"];
+
+const carteleraSample = `
+<a href="/PeliculaCine/10/metromar-cinemas/16345/el-final-de-oak-street">
+  <img src="https://www.compraentradas.com/img/Carteles/oak.jpg" alt="EL FINAL DE OAK STREET"/>
+</a>
+`;
+const cartelera = parseCarteleraHtml(carteleraSample, metromar);
+assert(cartelera.length === 1, "cartelera one film");
+assert(cartelera[0].filmId === "16345", "cartelera filmId");
+assert(cartelera[0].title === "EL FINAL DE OAK STREET", "cartelera title");
+
+const cervantesSample = `
+<a href="/PeliculaCine/48/cine-cervantes/999/spider-man">
+  <img src="/Carteles/spiderman.jpg" alt="SPIDER-MAN"/>
+</a>
+`;
+const carteleraCerv = parseCarteleraHtml(cervantesSample, cervantes);
+assert(carteleraCerv.length === 1 && carteleraCerv[0].filmId === "999", "cervantes cartelera");
+assert(parseCarteleraHtml(cervantesSample, metromar).length === 0, "cervantes path ignored for metromar");
+
+const horariosSample = `
+<span class="badge">DIGT</span>
+<a href='/Sesion/10/metromar-cinemas/el-final-de-oak-street/336629/1'>18:15</a>
+<a href='/Sesion/10/metromar-cinemas/el-final-de-oak-street/336630/1'>20:15</a>
+`;
+const horarios = parseHorariosHtml(horariosSample, metromar);
+assert(horarios.length === 2, "horarios count");
+assert(horarios[0].sessionId === "336629" && horarios[0].time === "18:15", "horario first");
+
+const horariosCerv = parseHorariosHtml(
+  `<a href='/Sesion/48/cine-cervantes/la-odisea/111/1'>17:45</a>`,
+  cervantes,
+);
+assert(horariosCerv.length === 1 && horariosCerv[0].time === "17:45", "cervantes horario");
+
+const sesionSample = `
+<meta name="btsg" content="tok.123">
+<div class='LineaPrecios ucc-normal row'><div><strong>UCC NORMAL</strong></div>
+<input type="text" name="CodigoPrecioButacas[]" value="AAA==">
+<input id="NumButacas0" name="NumButacas[]" value="0"></div>
+<div class='LineaPrecios familia row'><div><strong>UCC FAMILIA</strong></div>
+<input type="text" name="CodigoPrecioButacas[]" value="BBB==">
+<input id="NumButacas2" name="NumButacasFamilia[]" class="ButacasFamilia" value="0"></div>
+`;
+const sesion = parseSesionHtml(sesionSample);
+assert(sesion.btsg === "tok.123", "sesion btsg");
+assert(sesion.prices.length === 2, "sesion prices");
+assert(!sesion.prices[0].isFamilia && sesion.prices[1].isFamilia, "sesion familia flag");
+
+const butacasSample = `
+<div id="NumButacas">2</div>
+<div class="asiento seleccionable" data-id="101" data-estado="1" data-filacliente="5" data-columna="3" data-columnareal="10"><img src="/images/asientos/nuevos/Libre.png"></div>
+<div class="asiento" data-id="102" data-estado="0" data-filacliente="5" data-columna="4" data-columnareal="0"><img src="/images/asientos/nuevos/Pasillo.png"></div>
+<div class="asiento ocupado" data-id="103" data-estado="3" data-filacliente="5" data-columna="5" data-columnareal="8"><img src="/images/asientos/nuevos/Ocupado.png"></div>
+`;
+const butacas = parseButacasHtml(butacasSample);
+assert(butacas.seats.length === 3, "butacas count");
+assert(butacas.seats[0].available && !butacas.seats[0].aisle, "libre");
+assert(butacas.seats[1].aisle && !butacas.seats[1].available, "pasillo no es butaca");
+assert(!butacas.seats[2].available && !butacas.seats[2].aisle, "ocupada");
+
+const miercolesSample = `
+<meta name="btsg" content="mie.1">
+<h4>Sala 06 - Miércoles 12-08-2026 - 17:30 h </h4>
+<div class='LineaPrecios ucc-miercoles row'><div><strong>UCC MIERCOLES</strong></div>
+<div class="ImportePrecio"><strong>5.75 €</strong></div>
+<div class="CodigoPrecio d-none">1027</div>
+<input type="text" name="CodigoPrecioButacas[]" value="MIE==">
+<input id="NumButacas0" name="NumButacas[]" value="0"></div>
+`;
+const miercoles = parseSesionHtml(miercolesSample);
+assert(miercoles.prices.length === 1, "miercoles only one price");
+assert(miercoles.prices[0].label === "UCC MIERCOLES", "miercoles label");
+assert(!miercoles.prices[0].isFamilia, "miercoles not familia");
+
+const merchantParams = {
+  Ds_SignatureVersion: "HMAC_SHA256_V1",
+  Ds_MerchantParameters: Buffer.from(
+    JSON.stringify({
+      DS_MERCHANT_ORDER: "999888777666",
+      DS_MERCHANT_URLOK: "https%3A%2F%2Fwww.compraentradas.com%2FEntrada%2F245773653369",
+      DS_MERCHANT_URLKO: "https%3A%2F%2Fwww.compraentradas.com%2FEntrada%2F245773653369",
+    }),
+  ).toString("base64"),
+};
+assert(refFromMerchantParams(merchantParams) === "245773653369", "referencia desde URLOK");
+assert(
+  refFromMerchantParams({
+    Ds_MerchantParameters: Buffer.from(
+      JSON.stringify({ DS_MERCHANT_ORDER: "245773653369" }),
+    ).toString("base64"),
+  }) === "245773653369",
+  "referencia desde DS_MERCHANT_ORDER",
+);
+assert(refFromMerchantParams({}) === "", "sin params no hay referencia");
+assert(refFromMerchantParams({ Ds_MerchantParameters: "no-base64-json" }) === "", "params ilegibles");
 
 console.log("selfcheck ok");

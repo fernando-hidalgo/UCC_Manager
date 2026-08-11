@@ -16,7 +16,9 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDoc,
   getDocs,
+  deleteField,
 } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
 import {
   getFunctions,
@@ -79,6 +81,24 @@ export async function readTicketRemote({ imageBase64, mimeType }) {
   const res = await fn({ imageBase64, mimeType });
   return res.data;
 }
+
+async function callBooking(name, data = {}) {
+  const fn = httpsCallable(functions, name);
+  const res = await fn(data);
+  return res.data;
+}
+
+export const getCarteleraRemote = (cineId) => callBooking("getCartelera", { cineId });
+export const getPeliculaRemote = (cineId, filmId, slug) =>
+  callBooking("getPelicula", { cineId, filmId, slug });
+export const getHorariosRemote = (cineId, filmId, date) =>
+  callBooking("getHorarios", { cineId, filmId, date });
+export const startSesionRemote = (payload) => callBooking("startSesion", payload);
+export const guardarEntradasRemote = (payload) => callBooking("guardarEntradas", payload);
+export const getButacasRemote = (bookingId) => callBooking("getButacas", { bookingId });
+export const guardarButacasRemote = (bookingId, seatIds) =>
+  callBooking("guardarButacas", { bookingId, seatIds });
+export const generarPagoRemote = (payload) => callBooking("generarPago", payload);
 
 function codesCol(uid) {
   return collection(db, "users", uid, "codes");
@@ -178,4 +198,21 @@ export function mergeRemoteTickets(local, remote) {
 export async function syncTickets(uid, local) {
   const remote = await pullTickets(uid);
   return mergeRemoteTickets(local, remote);
+}
+
+/** Preferred cinema for Cartelera: users/{uid}/prefs/cartelera */
+export async function getPreferredCineRemote(uid) {
+  const snap = await getDoc(doc(db, "users", uid, "prefs", "cartelera"));
+  if (!snap.exists()) return "";
+  return String(snap.data()?.preferredCineId || "").trim();
+}
+
+export async function setPreferredCineRemote(uid, cineId) {
+  const ref = doc(db, "users", uid, "prefs", "cartelera");
+  const id = String(cineId || "").trim();
+  if (id) {
+    await setDoc(ref, { preferredCineId: id }, { merge: true });
+  } else {
+    await setDoc(ref, { preferredCineId: deleteField() }, { merge: true });
+  }
 }
