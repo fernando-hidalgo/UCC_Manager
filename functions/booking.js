@@ -123,16 +123,10 @@ function parsePeliculaHtml(html, filmId, slug, cine) {
       (html.match(/src=["'](https?:\/\/[^"']*Carteles[^"']+|\/(?:img\/)?Carteles\/[^"']+)["']/i) ||
         [])[1] || "",
     ) || "";
-  const originalTitle = decodeHtml(
-    (html.match(/T[ií]tulo original[\s\S]*?<td[^>]*>\s*([^<]+)/i) || [])[1] || "",
-  ).trim();
-  const genre = decodeHtml((html.match(/G[eé]nero[\s\S]*?<td[^>]*>\s*([^<]+)/i) || [])[1] || "").trim();
-  const director = decodeHtml(
-    (html.match(/Director[\s\S]*?<td[^>]*>\s*([^<]+)/i) || [])[1] || "",
-  ).trim();
-  const duration = decodeHtml(
-    (html.match(/Duraci[oó]n[\s\S]*?<td[^>]*>\s*([^<]+)/i) || [])[1] || "",
-  ).trim();
+  const originalTitle = tableCell(html, "T[ií]tulo original");
+  const genre = tableCell(html, "G[eé]nero");
+  const director = tableCell(html, "Director");
+  const duration = tableCell(html, "Duraci[oó]n");
   const synopsis = decodeHtml(
     (html.match(/Sinopsis:<\/strong>\s*([^<]+)/i) || [])[1] || "",
   ).trim();
@@ -152,6 +146,15 @@ function parsePeliculaHtml(html, filmId, slug, cine) {
     poster,
     dates,
   };
+}
+
+/** Value cell in the same table row as a label. */
+function tableCell(html, labelRe) {
+  const re = new RegExp(
+    String.raw`<tr[^>]*>[\s\S]*?(?:${labelRe})[\s\S]*?<td[^>]*>\s*([^<]*)`,
+    "i",
+  );
+  return decodeHtml((html.match(re) || [])[1] || "").trim();
 }
 
 /** Parse HorariosDia fragment */

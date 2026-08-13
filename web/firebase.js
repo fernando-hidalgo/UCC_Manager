@@ -216,3 +216,37 @@ export async function setPreferredCineRemote(uid, cineId) {
     await setDoc(ref, { preferredCineId: deleteField() }, { merge: true });
   }
 }
+
+/** Cartelera email alerts: users/{uid}/prefs/carteleraAlert */
+export async function getCarteleraAlertRemote(uid) {
+  const snap = await getDoc(doc(db, "users", uid, "prefs", "carteleraAlert"));
+  if (!snap.exists()) return { exists: false, enabled: false, email: "" };
+  const d = snap.data() || {};
+  return {
+    exists: true,
+    enabled: d.enabled !== false,
+    email: String(d.email || "").trim(),
+  };
+}
+
+/** Create default opt-in if missing (fallback for Auth onCreate). */
+export async function ensureCarteleraAlertRemote(uid, email) {
+  const ref = doc(db, "users", uid, "prefs", "carteleraAlert");
+  const snap = await getDoc(ref);
+  if (snap.exists()) return getCarteleraAlertRemote(uid);
+  await setDoc(ref, {
+    enabled: true,
+    email: String(email || "").trim(),
+    createdAt: new Date().toISOString(),
+  });
+  return { exists: true, enabled: true, email: String(email || "").trim() };
+}
+
+export async function setCarteleraAlertEnabledRemote(uid, enabled, email) {
+  const ref = doc(db, "users", uid, "prefs", "carteleraAlert");
+  const patch = { enabled: !!enabled };
+  const em = String(email || "").trim();
+  if (em) patch.email = em;
+  await setDoc(ref, patch, { merge: true });
+  return getCarteleraAlertRemote(uid);
+}

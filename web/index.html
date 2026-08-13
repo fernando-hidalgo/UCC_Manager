@@ -229,7 +229,19 @@
             <p class="empty-state__text" id="cartelera-empty-text">No se pudieron cargar las películas</p>
           </div>
           <button type="button" class="btn btn--ghost cartelera-change-cine" id="cartelera-change-cine">
-            Cambiar cine
+            <svg class="cartelera-action-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="5" width="16" height="14" rx="1.5"/>
+              <path d="M18 8.5l4-2v11l-4-2"/>
+              <path d="M6 9h6M6 12h8M6 15h5"/>
+            </svg>
+            <span>Cambiar cine</span>
+          </button>
+          <button type="button" class="btn btn--ghost cartelera-alerts-toggle" id="cartelera-alerts-toggle" hidden>
+            <svg class="cartelera-action-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M6 9a6 6 0 0 1 12 0c0 7 3 7 3 7H3s3 0 3-7"/>
+              <path d="M10 19a2 2 0 0 0 4 0"/>
+            </svg>
+            <span id="cartelera-alerts-label">Activar alertas</span>
           </button>
         </div>
         <div id="cartelera-view-film" class="cartelera-view" hidden>

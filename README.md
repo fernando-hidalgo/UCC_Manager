@@ -43,6 +43,22 @@ firebase deploy --only functions,hosting
 ```
 
 Hosting principal: `https://ucc-manager.web.app` (el proyecto Firebase sigue llamándose `ucc-discount`).
+
+### Alertas de cartelera (Metromar)
+
+Lunes y jueves a las 16:00 (Europe/Madrid): si hay películas nuevas (no óperas), un correo por suscriptor. Opt-in al crear cuenta Google; opt-out en el mail o en Cartelera → Activar/Desactivar alertas.
+
+Secrets (Gmail de la **app** como emisor + HMAC unsub):
+
+```bash
+firebase functions:secrets:set GMAIL_USER
+firebase functions:secrets:set GMAIL_APP_PASSWORD
+firebase functions:secrets:set UNSUB_SECRET
+firebase deploy --only functions,hosting,firestore
+```
+
+`GMAIL_USER` = email emisor; `GMAIL_APP_PASSWORD` = App Password de esa cuenta; `UNSUB_SECRET` = string aleatorio (`openssl rand -base64 32`).
+
 ## Desarrollo
 
 ```bash

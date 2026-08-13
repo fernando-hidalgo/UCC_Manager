@@ -21,6 +21,9 @@ import {
   generarPagoRemote,
   getPreferredCineRemote,
   setPreferredCineRemote,
+  ensureCarteleraAlertRemote,
+  getCarteleraAlertRemote,
+  setCarteleraAlertEnabledRemote,
 } from "./firebase.js";
 import { readTicketImage } from "./ocr.js";
 
@@ -922,6 +925,11 @@ async function enterApp(authUser) {
   dateInput.max = formatDateForInput(new Date());
   updateSubmit();
   try {
+    await ensureCarteleraAlertRemote(authUser.uid, authUser.email || "");
+  } catch (err) {
+    console.error("ensureCarteleraAlert", err);
+  }
+  try {
     await syncFromCloud();
   } catch (err) {
     console.error(err);
@@ -930,6 +938,61 @@ async function enterApp(authUser) {
     renderList();
     renderTickets();
     showListMessage("Usando cache local; no se pudo sync.", "error");
+  }
+  await tryOpenCarteleraDeepLink();
+}
+
+/** Open film from #cartelera/{cine}/{film}/{slug} (email links). */
+async function tryOpenCarteleraDeepLink() {
+  const hash = String(window.location.hash || "").replace(/^#/, "");
+  const m = hash.match(/^cartelera\/([^/]+)\/([^/]+)\/(.+)$/);
+  const params = new URLSearchParams(window.location.search);
+  const legacyTab = params.get("tab") === "cartelera";
+
+  let cineId = "";
+  let filmId = "";
+  let slug = "";
+  if (m) {
+    cineId = decodeURIComponent(m[1]);
+    filmId = decodeURIComponent(m[2]);
+    slug = decodeURIComponent(m[3]);
+  } else if (legacyTab) {
+    cineId = String(params.get("cine") || "").trim();
+    filmId = String(params.get("film") || "").trim();
+    slug = String(params.get("slug") || "").trim();
+  } else {
+    return;
+  }
+
+  history.replaceState({}, "", window.location.pathname);
+
+  activateTab("cartelera");
+  if (!cineId || !filmId || !slug) {
+    await ensureCarteleraLoaded();
+    return;
+  }
+  const cine = cineById(cineId);
+  if (!cine) {
+    await ensureCarteleraLoaded();
+    return;
+  }
+  booking.cine = cine;
+  booking.loaded = false;
+  try {
+    const data = await getCarteleraRemote(cine.id);
+    booking.films = data.films || [];
+    if (data.cine) booking.cine = { ...booking.cine, ...data.cine };
+    booking.loaded = true;
+    renderCarteleraGrid();
+    const brief =
+      booking.films.find((f) => String(f.filmId) === filmId) ||
+      { filmId, slug, title: slug, poster: "" };
+    await openFilm(brief);
+    refreshCarteleraAlertsButton();
+  } catch (err) {
+    console.error(err);
+    showCarteleraMessage(errMsg(err), "error");
+    await ensureCarteleraLoaded();
   }
 }
 
@@ -946,6 +1009,7 @@ function leaveApp() {
   preferredCineId = "";
   preferredCineLoaded = false;
   resetBookingSession();
+  if (carteleraAlertsToggle) carteleraAlertsToggle.hidden = true;
   showView("login");
   hideLoginMessage();
 }
@@ -990,6 +1054,8 @@ const carteleraEmpty = document.getElementById("cartelera-empty");
 const carteleraEmptyText = document.getElementById("cartelera-empty-text");
 const carteleraCineLabel = document.getElementById("cartelera-cine-label");
 const carteleraChangeCine = document.getElementById("cartelera-change-cine");
+const carteleraAlertsToggle = document.getElementById("cartelera-alerts-toggle");
+const carteleraAlertsLabel = document.getElementById("cartelera-alerts-label");
 const cineList = document.getElementById("cine-list");
 const cineRemember = document.getElementById("cine-remember");
 const filmPoster = document.getElementById("film-poster");
@@ -1197,6 +1263,7 @@ async function showCinePicker() {
   booking.cine = null;
   booking.film = null;
   showCarteleraMessage("");
+  if (carteleraAlertsToggle) carteleraAlertsToggle.hidden = true;
   await loadPreferredCineId();
   renderCinePicker();
   showCarteleraView("cines");
@@ -1205,6 +1272,7 @@ async function showCinePicker() {
 async function ensureCarteleraLoaded() {
   if (booking.loaded && booking.cine) {
     showCarteleraView("grid");
+    refreshCarteleraAlertsButton();
     return;
   }
   if (!booking.cine) {
@@ -1234,6 +1302,7 @@ async function loadCartelera() {
     booking.loaded = true;
     renderCarteleraGrid();
     showCarteleraView("grid");
+    refreshCarteleraAlertsButton();
   } catch (err) {
     console.error(err);
     booking.films = [];
@@ -1241,8 +1310,55 @@ async function loadCartelera() {
     renderCarteleraGrid();
     showCarteleraView("grid");
     showCarteleraMessage(errMsg(err), "error");
+    refreshCarteleraAlertsButton();
   }
 }
+
+let carteleraAlertsEnabled = true;
+
+async function refreshCarteleraAlertsButton() {
+  if (!carteleraAlertsToggle || !user) {
+    if (carteleraAlertsToggle) carteleraAlertsToggle.hidden = true;
+    return;
+  }
+  carteleraAlertsToggle.hidden = false;
+  carteleraAlertsToggle.disabled = true;
+  try {
+    const pref = await getCarteleraAlertRemote(user.uid);
+    carteleraAlertsEnabled = pref.exists ? pref.enabled : true;
+  } catch (err) {
+    console.error(err);
+    carteleraAlertsEnabled = true;
+  }
+  if (carteleraAlertsLabel) {
+    carteleraAlertsLabel.textContent = carteleraAlertsEnabled
+      ? "Desactivar alertas"
+      : "Activar alertas";
+  }
+  carteleraAlertsToggle.disabled = false;
+}
+
+carteleraAlertsToggle?.addEventListener("click", async () => {
+  if (!user) return;
+  const next = !carteleraAlertsEnabled;
+  carteleraAlertsToggle.disabled = true;
+  try {
+    await setCarteleraAlertEnabledRemote(user.uid, next, user.email || "");
+    carteleraAlertsEnabled = next;
+    if (carteleraAlertsLabel) {
+      carteleraAlertsLabel.textContent = next ? "Desactivar alertas" : "Activar alertas";
+    }
+    showCarteleraMessage(
+      next ? "Alertas de cartelera activadas." : "Alertas de cartelera desactivadas.",
+      "info",
+    );
+  } catch (err) {
+    console.error(err);
+    showCarteleraMessage(errMsg(err), "error");
+  } finally {
+    carteleraAlertsToggle.disabled = false;
+  }
+});
 
 function renderCarteleraGrid() {
   carteleraGrid.replaceChildren();
@@ -1277,6 +1393,35 @@ carteleraChangeCine?.addEventListener("click", () => {
   showCinePicker();
 });
 
+function normTitle(s) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+/** Subtitle: original once (omit if ≈ title), then genre/director/duration without dupes. */
+function formatFilmMeta(film) {
+  const bits = [];
+  const seen = new Set();
+  const push = (raw) => {
+    const t = String(raw || "").trim();
+    if (!t) return;
+    const n = normTitle(t);
+    if (!n || seen.has(n)) return;
+    seen.add(n);
+    bits.push(t);
+  };
+  const titleN = normTitle(film.title);
+  const orig = String(film.originalTitle || "").trim();
+  if (orig && normTitle(orig) !== titleN) push(orig);
+  push(film.genre);
+  push(film.director);
+  push(film.duration);
+  return bits.join(" · ");
+}
+
 async function openFilm(filmBrief) {
   if (!booking.cine) return;
   showCarteleraLoading("Cargando película…");
@@ -1287,8 +1432,7 @@ async function openFilm(filmBrief) {
     filmPoster.src = film.poster || filmBrief.poster || "";
     filmPoster.alt = film.title;
     filmTitle.textContent = film.title;
-    const metaBits = [film.originalTitle, film.genre, film.director, film.duration].filter(Boolean);
-    filmMeta.textContent = metaBits.join(" · ");
+    filmMeta.textContent = formatFilmMeta(film);
     filmSynopsis.textContent = film.synopsis || "";
     filmSynopsis.classList.remove("is-expanded");
     if (filmSynopsisMore) {

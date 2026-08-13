@@ -1,11 +1,24 @@
 const { setGlobalOptions } = require("firebase-functions/v2");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { defineSecret } = require("firebase-functions/params");
+const functionsV1 = require("firebase-functions/v1");
 const { initializeApp } = require("firebase-admin/app");
 const { GoogleAuth } = require("google-auth-library");
 const booking = require("./booking");
+const carteleraAlert = require("./carteleraAlert");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
+
+const gmailUser = defineSecret("GMAIL_USER");
+const gmailAppPassword = defineSecret("GMAIL_APP_PASSWORD");
+const unsubSecret = defineSecret("UNSUB_SECRET");
+
+function carteleraUnsubBaseUrl() {
+  const project = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT || "ucc-discount";
+  return `https://us-central1-${project}.cloudfunctions.net/unsubscribeCartelera`;
+}
 
 const VALIDITY_DAYS = 59;
 
@@ -391,3 +404,52 @@ exports.parsePeliculaHtml = booking.parsePeliculaHtml;
 exports.parseHorariosHtml = booking.parseHorariosHtml;
 exports.parseSesionHtml = booking.parseSesionHtml;
 exports.parseButacasHtml = booking.parseButacasHtml;
+
+exports.onAuthUserCreate = functionsV1.auth.user().onCreate(async (user) => {
+  try {
+    await carteleraAlert.ensureAlertPref(user.uid, user.email || "");
+  } catch (err) {
+    console.error("onAuthUserCreate carteleraAlert", err);
+  }
+});
+
+exports.watchCarteleraMetromar = onSchedule(
+  {
+    schedule: "0 16 * * 1,4",
+    timeZone: "Europe/Madrid",
+    secrets: [gmailUser, gmailAppPassword, unsubSecret],
+    timeoutSeconds: 300,
+    memory: "256MiB",
+  },
+  async () => {
+    const result = await carteleraAlert.runCarteleraAlert({
+      gmailUser: gmailUser.value(),
+      gmailPass: gmailAppPassword.value(),
+      unsubSecret: unsubSecret.value(),
+      unsubBaseUrl: carteleraUnsubBaseUrl(),
+    });
+    console.log("watchCarteleraMetromar", {
+      seeded: result.seeded,
+      newCount: result.newCount,
+      mailed: result.mailed,
+      notified: result.notified.map((f) => f.title),
+    });
+  },
+);
+
+exports.unsubscribeCartelera = onRequest(
+  {
+    secrets: [unsubSecret],
+    cors: false,
+  },
+  async (req, res) => {
+    try {
+      await carteleraAlert.handleUnsubscribe(req, res, unsubSecret.value());
+    } catch (err) {
+      console.error("unsubscribeCartelera", err);
+      res.status(500).set("Content-Type", "text/html; charset=utf-8").send(
+        "<p>Error al desactivar alertas. Inténtalo más tarde.</p>",
+      );
+    }
+  },
+);

@@ -297,6 +297,7 @@ const {
   CINES,
   resolveCine,
   parseCarteleraHtml,
+  parsePeliculaHtml,
   parseHorariosHtml,
   parseButacasHtml,
   refFromMerchantParams,
@@ -334,6 +335,21 @@ const cervantesSample = `
 const carteleraCerv = parseCarteleraHtml(cervantesSample, cervantes);
 assert(carteleraCerv.length === 1 && carteleraCerv[0].filmId === "999", "cervantes cartelera");
 assert(parseCarteleraHtml(cervantesSample, metromar).length === 0, "cervantes path ignored for metromar");
+
+const peliculaSample = `
+<h1>CUENTA ATRAS en Metromar Cinemas</h1>
+<table>
+<tr><td>Título original</td><td>FUZE</td></tr>
+<tr><td>Género</td><td>Acción</td></tr>
+<tr><td>Director</td><td>Jane Doe</td></tr>
+<tr><td>Duración</td><td>96 minutos</td></tr>
+</table>
+`;
+const pelicula = parsePeliculaHtml(peliculaSample, "1", "cuenta-atras", metromar);
+assert(pelicula.originalTitle === "FUZE", "pelicula original once");
+assert(pelicula.genre === "Acción", "pelicula genre");
+assert(pelicula.director === "Jane Doe", "pelicula director");
+assert(pelicula.duration === "96 minutos", "pelicula duration");
 
 const horariosSample = `
 <span class="badge">DIGT</span>
@@ -411,5 +427,93 @@ assert(
 );
 assert(refFromMerchantParams({}) === "", "sin params no hay referencia");
 assert(refFromMerchantParams({ Ds_MerchantParameters: "no-base64-json" }) === "", "params ilegibles");
+
+const {
+  isOpera,
+  diffNewFilms,
+  unsubToken,
+  verifyUnsubToken,
+  filmUrl,
+  buildMail,
+  headerCopy,
+  filterFilmsForSubscriber,
+} = require("./functions/carteleraAlert.js");
+
+assert(isOpera({ title: "ANDREA CHENIER OPERA", slug: "andrea-chenier-opera" }), "opera title");
+assert(isOpera({ title: "Carmen", slug: "carmen-opera-2026" }), "opera slug");
+assert(!isOpera({ title: "LA ODISEA", slug: "la-odisea" }), "non-opera");
+
+const prev = ["1", "2"];
+const cur = [
+  { filmId: "1", title: "A", slug: "a" },
+  { filmId: "3", title: "NEW OPERA", slug: "new-opera" },
+  { filmId: "4", title: "SPIDER", slug: "spider" },
+];
+const brandNew = diffNewFilms(cur, prev);
+assert(brandNew.length === 2 && brandNew[0].filmId === "3", "diff new ids");
+const notify = brandNew.filter((f) => !isOpera(f));
+assert(notify.length === 1 && notify[0].filmId === "4", "batch excludes opera");
+
+const secret = "test-unsub-secret";
+const tok = unsubToken("uid123", secret);
+assert(verifyUnsubToken("uid123", tok, secret), "unsub token ok");
+assert(!verifyUnsubToken("uid123", "bad", secret), "unsub token bad");
+assert(
+  filmUrl({ filmId: "16227", slug: "andrea-chenier-opera", cineId: "10" }).includes(
+    "compraentradas.com/PeliculaCine/10/",
+  ),
+  "film url CE",
+);
+assert(
+  !filmUrl({ filmId: "16227", slug: "x", cineId: "10" }).includes("ucc-manager.web.app"),
+  "film url not webapp",
+);
+
+const mailFilms = [
+  {
+    filmId: "16376",
+    slug: "cuenta-atras",
+    title: "CUENTA ATRAS",
+    poster: "https://www.compraentradas.com/img/Carteles/cuenta_atras_2025.jpg",
+    badge: "Estreno 14/08/2026",
+    cineId: "10",
+    cineSlug: "metromar-cinemas",
+    cineName: "Metromar Cinemas",
+  },
+];
+assert(headerCopy(mailFilms) === "Las novedades en Metromar Cinemas", "header one cine");
+assert(
+  headerCopy([
+    ...mailFilms,
+    { ...mailFilms[0], cineId: "48", cineName: "Cine Cervantes" },
+  ]).includes("y Cine Cervantes"),
+  "header both cines",
+);
+assert(filterFilmsForSubscriber(mailFilms, "48").length === 0, "pref filters out");
+assert(filterFilmsForSubscriber(mailFilms, "10").length === 1, "pref keeps");
+assert(filterFilmsForSubscriber(mailFilms, "").length === 1, "no pref all");
+
+const { subjectDate } = require("./functions/carteleraAlert.js");
+assert(
+  subjectDate(new Date("2026-08-13T12:00:00+02:00")) === "13 de Agosto 2026",
+  "subject date es",
+);
+
+const mail = buildMail({
+  films: mailFilms,
+  unsubHref: "https://example.com/unsub",
+  now: new Date("2026-08-13T12:00:00+02:00"),
+});
+assert(/<img[^>]+src="https:\/\/www\.compraentradas\.com\/img\/Carteles/i.test(mail.html), "mail poster img");
+assert(/Desactivar alertas/i.test(mail.html) && /border-radius:999px/i.test(mail.html), "mail unsub button");
+assert(/Las novedades en Metromar/i.test(mail.html), "mail header copy");
+assert(mail.subject === "Las novedades en Metromar Cinemas — 13 de Agosto 2026", "mail subject date");
+assert(!/CUENTA ATRAS/i.test(mail.subject), "subject has no film title");
+assert(/UCC Manager/i.test(mail.html), "mail brand");
+assert(/linear-gradient\(115deg/i.test(mail.html), "mail header gradient");
+assert(/icon-128\.png/i.test(mail.html), "mail logo");
+assert(/color:#ffffff/i.test(mail.html), "mail white header text");
+assert(/compraentradas\.com\/PeliculaCine/i.test(mail.html), "mail CE link");
+assert(!/mix-blend-mode/i.test(mail.html), "no blend hacks");
 
 console.log("selfcheck ok");
