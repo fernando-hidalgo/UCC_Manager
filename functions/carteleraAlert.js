@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
-const { getCartelera, CINES } = require("./booking");
+const { getCartelera, CINES, isHiddenFilm, isOpera } = require("./booking");
 
 const CE = "https://www.compraentradas.com";
 const APP_URL = "https://ucc-manager.web.app";
@@ -21,10 +21,6 @@ function db() {
 
 function metaRefFor(cineId) {
   return db().doc(`meta/cartelera-${cineId}`);
-}
-
-function isOpera(film) {
-  return /opera/i.test(film?.title || "") || /opera/i.test(film?.slug || "");
 }
 
 /** Films in current not in storedIds (by filmId). */
@@ -287,7 +283,7 @@ async function processCineSnapshot(cineId) {
 
   const storedIds = metaSnap.data()?.filmIds || [];
   const brandNew = diffNewFilms(tagged, storedIds);
-  const toNotify = brandNew.filter((f) => !isOpera(f));
+  const toNotify = brandNew.filter((f) => !isHiddenFilm(f));
 
   await metaRef.set({
     filmIds: currentIds,

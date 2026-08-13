@@ -77,6 +77,17 @@ async function ceFetch(pathOrUrl, { method = "GET", jar, body, headers = {} } = 
   return { res, text, jar: nextJar };
 }
 
+/** Hide from cartelera + alerts: óperas and “sesión teta”. */
+function isHiddenFilm(film) {
+  const blob = `${film?.title || ""} ${film?.slug || ""}`;
+  return /opera/i.test(blob) || /sesi[oó]n\s*teta/i.test(blob);
+}
+
+/** @deprecated use isHiddenFilm */
+function isOpera(film) {
+  return isHiddenFilm(film);
+}
+
 /** Parse cartelera HTML → films[] */
 function parseCarteleraHtml(html, cine) {
   const id = cine?.id || "10";
@@ -334,7 +345,8 @@ async function getCartelera({ cineId } = {}) {
   const cine = resolveCine(cineId);
   const { text, res } = await ceFetch(`/Cine/${cine.id}/${cine.slug}`);
   if (!res.ok) throw new HttpsError("unavailable", "No se pudo cargar la cartelera.");
-  return { cine, films: parseCarteleraHtml(text, cine) };
+  const films = parseCarteleraHtml(text, cine).filter((f) => !isHiddenFilm(f));
+  return { cine, films };
 }
 
 async function getPelicula({ cineId, filmId, slug }) {
@@ -640,6 +652,8 @@ async function generarPago(uid, { bookingId, email, telefono }) {
 module.exports = {
   CINES,
   resolveCine,
+  isOpera,
+  isHiddenFilm,
   parseCarteleraHtml,
   parsePeliculaHtml,
   parseHorariosHtml,

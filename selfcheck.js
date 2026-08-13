@@ -442,17 +442,24 @@ const {
 assert(isOpera({ title: "ANDREA CHENIER OPERA", slug: "andrea-chenier-opera" }), "opera title");
 assert(isOpera({ title: "Carmen", slug: "carmen-opera-2026" }), "opera slug");
 assert(!isOpera({ title: "LA ODISEA", slug: "la-odisea" }), "non-opera");
+assert(isOpera({ title: "CARMEN OPERA 2026", slug: "carmen-opera-2026" }), "carmen opera");
+assert(isOpera({ title: "NABUCCO OPERA 2026", slug: "nabucco-opera-2026" }), "nabucco opera");
+assert(!isOpera({ title: "SPIDER-MAN: BRAND NEW DAY", slug: "spider-man" }), "spiderman not opera");
+assert(isOpera({ title: "MARSUPILAMI (SESION TETA)", slug: "marsupilami-sesion-teta" }), "sesion teta");
+assert(isOpera({ title: "MARSUPILAMI (Sesión Teta)", slug: "x" }), "sesion teta accent");
+assert(!isOpera({ title: "MARSUPILAMI", slug: "marsupilami" }), "marsupilami ok");
 
 const prev = ["1", "2"];
 const cur = [
   { filmId: "1", title: "A", slug: "a" },
   { filmId: "3", title: "NEW OPERA", slug: "new-opera" },
   { filmId: "4", title: "SPIDER", slug: "spider" },
+  { filmId: "5", title: "MARSUPILAMI (SESION TETA)", slug: "marsu-teta" },
 ];
 const brandNew = diffNewFilms(cur, prev);
-assert(brandNew.length === 2 && brandNew[0].filmId === "3", "diff new ids");
+assert(brandNew.length === 3, "diff new ids");
 const notify = brandNew.filter((f) => !isOpera(f));
-assert(notify.length === 1 && notify[0].filmId === "4", "batch excludes opera");
+assert(notify.length === 1 && notify[0].filmId === "4", "batch excludes opera and teta");
 
 const secret = "test-unsub-secret";
 const tok = unsubToken("uid123", secret);
