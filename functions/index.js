@@ -415,7 +415,7 @@ exports.onAuthUserCreate = functionsV1.auth.user().onCreate(async (user) => {
 
 exports.watchCarteleraMetromar = onSchedule(
   {
-    schedule: "0 16 * * 1,4",
+    schedule: "0 10,18 * * *",
     timeZone: "Europe/Madrid",
     secrets: [gmailUser, gmailAppPassword, unsubSecret],
     timeoutSeconds: 300,

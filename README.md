@@ -46,7 +46,7 @@ Hosting principal: `https://ucc-manager.web.app` (el proyecto Firebase sigue lla
 
 ### Alertas de cartelera (Metromar)
 
-Lunes y jueves a las 16:00 (Europe/Madrid): si hay películas nuevas (no óperas), un correo por suscriptor. Opt-in al crear cuenta Google; opt-out en el mail o en Cartelera → Activar/Desactivar alertas.
+Todos los días a las 10:00 y 18:00 (Europe/Madrid): si hay películas nuevas (no óperas), un correo por suscriptor. Opt-in al crear cuenta Google; opt-out en el mail o en Cartelera → Activar/Desactivar alertas.
 
 Secrets (Gmail de la **app** como emisor + HMAC unsub):
 
