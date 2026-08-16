@@ -456,7 +456,25 @@ const ICONS = {
   seat: "M4 18v3h3v-3h10v3h3v-6H4zm15-8h3v3h-3zM2 10h3v3H2zm15 3H7V5c0-1.1.9-2 2-2h6c1.1 0 2 .9 2 2z",
   clock:
     "M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm0 18c-4.4 0-8-3.6-8-8s3.6-8 8-8 8 3.6 8 8-3.6 8-8 8zm.5-13H11v6l5.2 3.2.8-1.3-4.5-2.7V7z",
+  copy: "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z",
+  barcode: "M2 6h2v12H2zm3.5 0h1v12h-1zM8 6h3v12H8zm4.5 0h1v12h-1zM15 6h2v12h-2zm3.5 0h1.5v12H18.5z",
+  eye: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
+  trash:
+    "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
 };
+
+function fillBtn(btn, iconKey, label) {
+  const span = document.createElement("span");
+  span.className = "btn__label";
+  span.textContent = label;
+  btn.replaceChildren(createMetaIcon(ICONS[iconKey]), span);
+}
+
+function setBtnLabel(btn, label) {
+  const span = btn.querySelector(".btn__label");
+  if (span) span.textContent = label;
+  else btn.textContent = label;
+}
 
 function openTicketOverlay(ticket) {
   ticketOverlayTitle.textContent = ticket.title || "Entrada";
@@ -500,17 +518,17 @@ function createTicketCard(ticket) {
   viewBtn.type = "button";
   viewBtn.className = "btn btn--secondary btn--icon";
   viewBtn.title = "Ver QR y barras";
-  viewBtn.textContent = "Ver";
+  fillBtn(viewBtn, "eye", "Ver");
   viewBtn.addEventListener("click", () => openTicketOverlay(ticket));
 
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.className = "btn btn--danger btn--icon";
   deleteBtn.title = "Eliminar entrada";
-  deleteBtn.textContent = "Eliminar";
+  fillBtn(deleteBtn, "trash", "Eliminar");
   deleteBtn.addEventListener("click", async () => {
     deleteBtn.disabled = true;
-    deleteBtn.textContent = "…";
+    setBtnLabel(deleteBtn, "…");
     try {
       await deleteTicketRemote(user.uid, ticket.accessCode);
       saveTicketsCache(tickets.filter((t) => t.accessCode !== ticket.accessCode));
@@ -518,7 +536,7 @@ function createTicketCard(ticket) {
     } catch (err) {
       console.error(err);
       deleteBtn.disabled = false;
-      deleteBtn.textContent = "Eliminar";
+      setBtnLabel(deleteBtn, "Eliminar");
       showTicketsMessage("No se pudo borrar en la nube.", "error");
     }
   });
@@ -599,20 +617,20 @@ function createCard(item) {
   copyBtn.type = "button";
   copyBtn.className = "btn btn--secondary btn--icon";
   copyBtn.title = waiting ? "Aún no disponible" : "Copiar código";
-  copyBtn.textContent = "Copiar";
+  fillBtn(copyBtn, "copy", "Copiar");
   copyBtn.disabled = waiting;
   if (!waiting) {
     copyBtn.addEventListener("click", async () => {
       try {
         await navigator.clipboard.writeText(item.code);
-        copyBtn.textContent = "¡Copiado!";
+        setBtnLabel(copyBtn, "¡Copiado!");
         copyBtn.disabled = true;
         setTimeout(() => {
-          copyBtn.textContent = "Copiar";
+          setBtnLabel(copyBtn, "Copiar");
           copyBtn.disabled = false;
         }, 1500);
       } catch {
-        copyBtn.textContent = "Error";
+        setBtnLabel(copyBtn, "Error");
       }
     });
   }
@@ -621,7 +639,7 @@ function createCard(item) {
   barcodeBtn.type = "button";
   barcodeBtn.className = "btn btn--secondary btn--icon";
   barcodeBtn.title = waiting ? "Aún no disponible" : "Mostrar código de barras";
-  barcodeBtn.textContent = "Barras";
+  fillBtn(barcodeBtn, "barcode", "Barras");
   barcodeBtn.disabled = waiting;
   if (!waiting) {
     barcodeBtn.addEventListener("click", () => openBarcodeOverlay(item.code));
@@ -631,10 +649,10 @@ function createCard(item) {
   deleteBtn.type = "button";
   deleteBtn.className = "btn btn--danger btn--icon";
   deleteBtn.title = "Eliminar código";
-  deleteBtn.textContent = "Eliminar";
+  fillBtn(deleteBtn, "trash", "Eliminar");
   deleteBtn.addEventListener("click", async () => {
     deleteBtn.disabled = true;
-    deleteBtn.textContent = "…";
+    setBtnLabel(deleteBtn, "…");
     try {
       await deleteCodeRemote(user.uid, item.code);
       saveCache(codes.filter((c) => c.code !== item.code));
@@ -642,7 +660,7 @@ function createCard(item) {
     } catch (err) {
       console.error(err);
       deleteBtn.disabled = false;
-      deleteBtn.textContent = "Eliminar";
+      setBtnLabel(deleteBtn, "Eliminar");
       showListMessage("No se pudo borrar en la nube.", "error");
     }
   });

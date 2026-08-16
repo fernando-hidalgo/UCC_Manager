@@ -59,9 +59,13 @@
             title="Añadir código"
             aria-label="Añadir código"
           >
-            Añadir
+            <svg class="btn__icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            <span>Añadir</span>
           </button>
-          <button type="button" class="btn btn--auth" id="logout-btn">Salir</button>
+          <button type="button" class="btn btn--auth" id="logout-btn">
+            <svg class="btn__icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
+            <span>Salir</span>
+          </button>
         </div>
       </div>
     </header>
@@ -75,7 +79,8 @@
         id="tab-list"
         data-tab="list"
       >
-        Códigos
+        <svg class="tabs__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M21.41 11.58l-9-9C12.05 2.22 11.55 2 11 2H4c-1.1 0-2 .9-2 2v7c0 .55.22 1.05.59 1.42l9 9c.36.36.86.58 1.41.58s1.05-.22 1.41-.59l7-7c.37-.36.59-.86.59-1.41 0-.55-.23-1.06-.59-1.42zM5.5 7C4.67 7 4 6.33 4 5.5S4.67 4 5.5 4 7 4.67 7 5.5 6.33 7 5.5 7z"/></svg>
+        <span>Códigos</span>
       </button>
       <button
         class="tabs__btn"
@@ -95,7 +100,8 @@
         id="tab-tickets"
         data-tab="tickets"
       >
-        Entradas
+        <svg class="tabs__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M22 10V6c0-1.11-.9-2-2-2H4c-1.1 0-1.99.89-1.99 2v4c1.1 0 1.99.9 1.99 2s-.89 2-2 2v4c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2v-4c-1.1 0-2-.9-2-2s.9-2 2-2zm-9 7.5h-2v-2h2v2zm0-4.5h-2v-2h2v2zm0-4.5h-2v-2h2v2z"/></svg>
+        <span>Entradas</span>
       </button>
     </nav>
 
@@ -193,8 +199,12 @@
             <input type="date" id="date-input" class="form__input" required>
           </div>
           <div class="form__actions">
-            <button type="button" class="btn btn--ghost" id="clear-form-btn">Limpiar</button>
+            <button type="button" class="btn btn--ghost" id="clear-form-btn">
+              <svg class="btn__icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M440-520h80v-280q0-17-11.5-28.5T480-840q-17 0-28.5 11.5T440-800v280ZM200-360h560v-80H200v80Zm-58 240h98v-80q0-17 11.5-28.5T280-240q17 0 28.5 11.5T320-200v80h120v-80q0-17 11.5-28.5T480-240q17 0 28.5 11.5T520-200v80h120v-80q0-17 11.5-28.5T680-240q17 0 28.5 11.5T720-200v80h98l-40-160H182l-40 160Zm676 80H142q-39 0-63-31t-14-69l55-220v-80q0-33 23.5-56.5T200-520h160v-280q0-50 35-85t85-35q50 0 85 35t35 85v280h160q33 0 56.5 23.5T840-440v80l55 220q13 38-11.5 69T818-40Zm-58-400H200h560Zm-240-80h-80 80Z"/></svg>
+              <span>Limpiar</span>
+            </button>
             <button type="submit" class="btn btn--primary" id="submit-btn">
+              <svg class="btn__icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
               <span class="btn__label">Guardar</span>
               <span class="btn__spinner" aria-hidden="true"></span>
             </button>

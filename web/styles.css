@@ -254,6 +254,9 @@ body.is-login {
 .btn--header-add {
   appearance: none;
   -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 8px;
@@ -297,6 +300,9 @@ body.is-login {
 }
 
 .btn--auth {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   min-height: 44px;
   padding: 8px 14px;
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -314,6 +320,7 @@ body.is-login {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   padding: 9px 16px;
   border: none;
   border-radius: var(--radius);
@@ -322,6 +329,10 @@ body.is-login {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
+}
+
+.btn__icon {
+  flex-shrink: 0;
 }
 
 .btn:disabled {
@@ -351,7 +362,8 @@ body.is-login {
   pointer-events: none;
 }
 
-.btn--busy .btn__label {
+.btn--busy .btn__label,
+.btn--busy .btn__icon {
   visibility: hidden;
 }
 
@@ -415,8 +427,17 @@ body.is-login {
 }
 
 .btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 7px 10px;
   font-size: 12px;
+}
+
+.btn--icon .card__meta-icon {
+  width: 14px;
+  height: 14px;
 }
 
 .tabs {
@@ -430,6 +451,10 @@ body.is-login {
 
 .tabs__btn {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-height: 48px;
   border: none;
   background: transparent;
@@ -439,6 +464,10 @@ body.is-login {
   color: var(--color-text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
+}
+
+.tabs__icon {
+  flex-shrink: 0;
 }
 
 .tabs__btn--active {

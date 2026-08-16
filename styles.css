@@ -101,6 +101,9 @@ body:has(#view-app:not([hidden])) {
 .btn--header-add {
   appearance: none;
   -moz-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 8px;
@@ -146,6 +149,9 @@ body:has(#view-app:not([hidden])) {
 .btn--auth {
   appearance: none;
   -moz-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 6px 10px;
   border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 8px;
@@ -219,6 +225,10 @@ body:has(#view-app:not([hidden])) {
 
 .tabs__btn {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 11px 4px;
   border: none;
   background: transparent;
@@ -229,6 +239,10 @@ body:has(#view-app:not([hidden])) {
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: color 0.15s, border-color 0.15s;
+}
+
+.tabs__icon {
+  flex-shrink: 0;
 }
 
 .tabs__btn:hover {
@@ -954,6 +968,7 @@ body:has(#view-app:not([hidden])) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 5px;
   padding: 9px 16px;
   border: none;
   border-radius: var(--radius);
@@ -962,6 +977,10 @@ body:has(#view-app:not([hidden])) {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, opacity 0.15s;
+}
+
+.btn__icon {
+  flex-shrink: 0;
 }
 
 .btn:disabled {
@@ -1016,6 +1035,15 @@ body:has(#view-app:not([hidden])) {
 }
 
 .btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   padding: 7px 10px;
   font-size: 12px;
+}
+
+.btn--icon .card__meta-icon {
+  width: 14px;
+  height: 14px;
 }
