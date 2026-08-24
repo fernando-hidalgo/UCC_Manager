@@ -70,6 +70,12 @@ export async function validateCodeRemote(code) {
   return res.data;
 }
 
+export async function purgeDeadCodesRemote() {
+  const fn = httpsCallable(functions, "purgeDeadCodes");
+  const res = await fn({});
+  return res.data;
+}
+
 export async function fetchEntradaRemote(referencia) {
   const fn = httpsCallable(functions, "fetchEntrada");
   const res = await fn({ referencia: String(referencia).trim() });

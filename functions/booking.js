@@ -1,5 +1,6 @@
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
 const { HttpsError } = require("firebase-functions/v2/https");
+const { purgeCodeIfDead } = require("./codePurge");
 
 const CE = "https://www.compraentradas.com";
 const CINES = {
@@ -492,6 +493,7 @@ async function guardarEntradas(uid, { bookingId, quantities, menus, referencia }
     cookieJar: jar,
     butacasPath: go.startsWith("http") ? go.replace(CE, "") : go,
     ticketQty: total,
+    promoReferencia: String(referencia || "").trim(),
   });
 
   return { ok: true, ticketQty: total };
@@ -641,11 +643,23 @@ async function generarPago(uid, { bookingId, email, telefono }) {
     paidDestino: destino,
   });
 
+  let purgedPromo = null;
+  const promo = String(sess.promoReferencia || "").trim();
+  if (promo) {
+    try {
+      const { purged } = await purgeCodeIfDead(uid, promo);
+      if (purged) purgedPromo = promo;
+    } catch (err) {
+      console.error("purgeCodeIfDead", uid, promo, err);
+    }
+  }
+
   return {
     destino,
     params,
     referencia,
     freeEntry: /\/Entrada\//i.test(destino),
+    purgedPromo,
   };
 }
 

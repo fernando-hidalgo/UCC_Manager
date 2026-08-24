@@ -477,7 +477,9 @@ function createTicketCard(ticket) {
     meta.appendChild(createMetaRow(createMetaIcon(ICONS.clock), ticket.showtime, "card__date"));
   }
   if (ticket.seatsText) {
-    meta.appendChild(createMetaRow(createMetaIcon(ICONS.seat), ticket.seatsText, "card__seats"));
+    meta.appendChild(
+      createMetaRow(createMetaIcon(ICONS.seat), formatSeatsText(ticket.seatsText), "card__seats"),
+    );
   }
 
   const actions = document.createElement("div");
@@ -1058,6 +1060,11 @@ async function enterApp() {
     await syncCodesWithCloud(getCodes, saveCodes);
   } catch {
     /* use session cache */
+  }
+  try {
+    await browser.runtime.sendMessage({ type: "purge-dead-codes" });
+  } catch {
+    /* ignore */
   }
   try {
     await syncTicketsWithCloud(getTickets, saveTickets);

@@ -112,6 +112,13 @@ assert(
   "not_yet_valid status",
 );
 
+const { isDeadCodeStatus } = require("./functions/codePurge");
+assert(isDeadCodeStatus("seats_redeemed"), "seats_redeemed is dead");
+assert(isDeadCodeStatus("expired"), "expired is dead");
+assert(isDeadCodeStatus("invalid"), "invalid is dead");
+assert(!isDeadCodeStatus("valid"), "valid is not dead");
+assert(!isDeadCodeStatus("not_yet_valid"), "not_yet_valid is not dead");
+
 function parseEntradaHtml(html, referencia) {
   const text = String(html).replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]+>/g, "\n");
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -260,6 +267,32 @@ Butaca Fila: 6, Butaca: 13 - 5,75 €.
 assert(countSeatLines(seatSample) === 2, "seat line count");
 assert(showtimeToCreatedAt("17/06/2026 - 19:30 - Sala 3") === "2026-06-17", "showtime to createdAt");
 assert(showtimeToCreatedAt("") === "2026-08-05", "empty showtime → today");
+
+const { formatSeatsText } = require("./seatsFormat");
+assert(
+  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4") === "Fila 6 Butacas 6 y 4",
+  "same row two seats",
+);
+assert(
+  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 6 Butaca 2") ===
+    "Fila 6 Butacas 6, 4 y 2",
+  "same row three seats",
+);
+assert(
+  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 9 Butaca 3") ===
+    "Fila 6 Butacas 6 y 4; Fila 9 Butaca 3",
+  "two rows plural and singular",
+);
+assert(formatSeatsText("Fila 9 Butaca 3") === "Fila 9 Butaca 3", "single seat stays singular");
+assert(
+  formatSeatsText("Butaca Fila: 6, Butaca: 11 - 5,75 €.; Butaca Fila: 6, Butaca: 13 - 5,75 €.") ===
+    "Fila 6 Butacas 11 y 13",
+  "raw compraentradas lines",
+);
+assert(
+  formatSeatsText("Fila 6 Butacas 6 y 4") === "Fila 6 Butacas 6 y 4",
+  "already formatted idempotent",
+);
 
 function decodeHtml(s) {
   return String(s || "")

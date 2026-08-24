@@ -7,6 +7,9 @@ const { initializeApp } = require("firebase-admin/app");
 const { GoogleAuth } = require("google-auth-library");
 const booking = require("./booking");
 const carteleraAlert = require("./carteleraAlert");
+const { parseValidationResult, fetchValidationBody } = require("./validation");
+const codePurge = require("./codePurge");
+const { formatSeatsText } = require("./seatsFormat");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
@@ -21,43 +24,11 @@ function carteleraUnsubBaseUrl() {
 }
 
 const VALIDITY_DAYS = 59;
-
-const VALIDATION_URL = "https://www.compraentradas.com/Sesion/VuelvePor5";
 const ENTRADA_BASE = "https://www.compraentradas.com/Entrada";
-const MSG_EXPIRED = "han pasado más de 60 días";
-const MSG_NOT_YET = "24 horas después de la compra";
-const MSG_SEATS_REDEEMED = "ya se han canjeado todas las butacas";
-const MSG_INVALID = "La referencia no es válida";
 
 function requireAuth(request) {
   if (!request.auth?.uid) {
     throw new HttpsError("unauthenticated", "Debes iniciar sesión.");
-  }
-}
-
-function parseValidationResult(body) {
-  const message = typeof body === "string" ? body : String(body);
-  if (message.includes(MSG_EXPIRED)) return { status: "expired" };
-  if (message.includes(MSG_NOT_YET)) return { status: "not_yet_valid" };
-  if (message.includes(MSG_SEATS_REDEEMED)) return { status: "seats_redeemed" };
-  if (message.includes(MSG_INVALID)) return { status: "invalid" };
-  return { status: "valid" };
-}
-
-async function fetchValidationBody(code) {
-  const url = `${VALIDATION_URL}?Referencia=${encodeURIComponent(code)}`;
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json, text/javascript, */*; q=0.01",
-      "X-Requested-With": "XMLHttpRequest",
-    },
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const text = await response.text();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text.trim();
   }
 }
 
@@ -108,13 +79,9 @@ function parseEntradaHtml(html, referencia) {
 
   const showtime = lines.find((l) => /\d{2}\/\d{2}\/\d{4}/.test(l)) || "";
   const cinema = lines.find((l) => /cinemas/i.test(l)) || "";
-  const seatsText = lines
-    .filter((l) => /Butaca Fila/i.test(l))
-    .map((l) => {
-      const m = l.match(/Fila:\s*(\d+),\s*Butaca:\s*(\d+)/i);
-      return m ? `Fila ${m[1]} Butaca ${m[2]}` : l;
-    })
-    .join("; ");
+  const seatsText = formatSeatsText(
+    lines.filter((l) => /Butaca Fila/i.test(l)).join("; "),
+  );
 
   const refFromPage = (text.match(/Referencia\s+(\d+)/i) || [])[1] || String(referencia || "");
 
@@ -160,6 +127,16 @@ exports.validateCode = onCall(async (request) => {
   } catch (err) {
     console.error("validateCode", err);
     throw new HttpsError("internal", "No se pudo validar el código.");
+  }
+});
+
+exports.purgeDeadCodes = onCall(async (request) => {
+  requireAuth(request);
+  try {
+    return await codePurge.purgeDeadCodesForUser(request.auth.uid);
+  } catch (err) {
+    console.error("purgeDeadCodes", err);
+    throw new HttpsError("internal", "No se pudieron comprobar los códigos.");
   }
 });
 
@@ -412,6 +389,19 @@ exports.onAuthUserCreate = functionsV1.auth.user().onCreate(async (user) => {
     console.error("onAuthUserCreate carteleraAlert", err);
   }
 });
+
+exports.purgeDeadCodesDaily = onSchedule(
+  {
+    schedule: "0 18 * * *",
+    timeZone: "Europe/Madrid",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+  },
+  async () => {
+    const result = await codePurge.runGlobalDeadCodePurge();
+    console.log("purgeDeadCodesDaily", result);
+  },
+);
 
 exports.watchCarteleraMetromar = onSchedule(
   {

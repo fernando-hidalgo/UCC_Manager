@@ -58,6 +58,126 @@ async function validateCode(code) {
   return parseValidationResult(body);
 }
 
+const DEAD_CODE_STATUSES = new Set(["seats_redeemed", "expired", "invalid"]);
+
+function isDeadCodeStatus(status) {
+  return DEAD_CODE_STATUSES.has(status);
+}
+
+const PURGE_DEBOUNCE_MS = 30000;
+const PURGE_VALIDATE_DELAY_MS = 250;
+let lastPurgeAt = 0;
+let purgeInFlight = null;
+
+async function purgeDeadCodes() {
+  const session = await getValidSession();
+  if (!session) return { ok: false, error: "not_signed_in" };
+
+  let remote = [];
+  try {
+    remote = (await pullRemoteCodes()) || [];
+  } catch {
+    /* use local only */
+  }
+
+  const result = await browser.storage.local.get(CODES_KEY);
+  const local = result[CODES_KEY] || [];
+  const byCode = new Map();
+  for (const item of [...remote, ...local]) {
+    const code = String(item.code || "").trim();
+    if (code) byCode.set(code, item);
+  }
+
+  const purged = [];
+  for (const code of byCode.keys()) {
+    try {
+      const { status } = await validateCode(code);
+      if (isDeadCodeStatus(status)) {
+        purged.push(code);
+        byCode.delete(code);
+        try {
+          await deleteRemoteCode(code);
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore single failure */
+    }
+    await new Promise((resolve) => setTimeout(resolve, PURGE_VALIDATE_DELAY_MS));
+  }
+
+  if (purged.length) {
+    await browser.storage.local.set({ [CODES_KEY]: [...byCode.values()] });
+  }
+
+  return { ok: true, checked: byCode.size + purged.length, purged };
+}
+
+function schedulePurgeDeadCodes() {
+  const now = Date.now();
+  if (now - lastPurgeAt < PURGE_DEBOUNCE_MS) {
+    return purgeInFlight || Promise.resolve({ ok: true, skipped: true });
+  }
+  lastPurgeAt = now;
+  purgeInFlight = purgeDeadCodes().finally(() => {
+    purgeInFlight = null;
+  });
+  return purgeInFlight;
+}
+
+function madridDateParts(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Madrid",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: false,
+    })
+      .formatToParts(date)
+      .map((p) => [p.type, p.value]),
+  );
+  return {
+    ymd: `${parts.year}-${parts.month}-${parts.day}`,
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+  };
+}
+
+function nextMadrid1800Ms() {
+  const now = Date.now();
+  const { ymd, hour } = madridDateParts(new Date(now));
+  let [y, m, d] = ymd.split("-").map(Number);
+  if (hour >= 18) {
+    const next = new Date(Date.UTC(y, m - 1, d + 1));
+    y = next.getUTCFullYear();
+    m = next.getUTCMonth() + 1;
+    d = next.getUTCDate();
+  }
+  const targetYmd = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  for (let t = now; t < now + 48 * 3600 * 1000; t += 60000) {
+    const parts = madridDateParts(new Date(t));
+    if (parts.ymd === targetYmd && parts.hour === 18 && parts.minute === 0) return t;
+  }
+  return now + 24 * 3600 * 1000;
+}
+
+function scheduleDailyPurgeAlarm() {
+  browser.alarms.create("purge-dead-codes", { when: nextMadrid1800Ms() });
+}
+
+browser.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name !== "purge-dead-codes") return;
+  schedulePurgeDeadCodes().finally(() => scheduleDailyPurgeAlarm());
+});
+
+browser.runtime.onInstalled.addListener(() => scheduleDailyPurgeAlarm());
+scheduleDailyPurgeAlarm();
+
 function decodeHtml(s) {
   return String(s || "")
     .replace(/&nbsp;/g, " ")
@@ -99,13 +219,9 @@ function parseEntradaHtml(html, referencia) {
 
   const showtime = lines.find((l) => /\d{2}\/\d{2}\/\d{4}/.test(l)) || "";
   const cinema = lines.find((l) => /cinemas/i.test(l)) || "";
-  const seatsText = lines
-    .filter((l) => /Butaca Fila/i.test(l))
-    .map((l) => {
-      const m = l.match(/Fila:\s*(\d+),\s*Butaca:\s*(\d+)/i);
-      return m ? `Fila ${m[1]} Butaca ${m[2]}` : l;
-    })
-    .join("; ");
+  const seatsText = formatSeatsText(
+    lines.filter((l) => /Butaca Fila/i.test(l)).join("; "),
+  );
 
   const refFromPage = (text.match(/Referencia\s+(\d+)/i) || [])[1] || String(referencia || "");
 
@@ -382,6 +498,9 @@ browser.runtime.onMessage.addListener((message) => {
       ok: false,
       error: err?.message || String(err),
     }));
+  }
+  if (message?.type === "purge-dead-codes") {
+    return schedulePurgeDeadCodes();
   }
   return undefined;
 });

@@ -68,12 +68,7 @@
       cinema = lines.find((l) => /cinemas/i.test(l)) || "";
       const seatLines = lines.filter((l) => /Butaca Fila/i.test(l));
       seats = seatLines.length > 0 ? seatLines.length : 1;
-      seatsText = seatLines
-        .map((l) => {
-          const m = l.match(/Fila:\s*(\d+),\s*Butaca:\s*(\d+)/i);
-          return m ? `Fila ${m[1]} Butaca ${m[2]}` : l;
-        })
-        .join("; ");
+      seatsText = formatSeatsText(seatLines.join("; "));
     }
 
     return {
@@ -230,6 +225,8 @@
 
     wrap.append(btn, status);
     frame.appendChild(wrap);
+
+    browser.runtime.sendMessage({ type: "purge-dead-codes" }).catch(() => {});
   }
 
   if (document.readyState === "loading") {
