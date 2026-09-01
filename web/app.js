@@ -1505,7 +1505,7 @@ function normTitle(s) {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-/** Subtitle: original once (omit if ≈ title), then genre/director/duration without dupes. */
+/** Subtitle lines: original once (omit if ≈ title), then genre/director/duration without dupes. */
 function formatFilmMeta(film) {
   const bits = [];
   const seen = new Set();
@@ -1523,7 +1523,7 @@ function formatFilmMeta(film) {
   push(film.genre);
   push(film.director);
   push(film.duration);
-  return bits.join(" · ");
+  return bits;
 }
 
 async function openFilm(filmBrief) {
@@ -1536,7 +1536,12 @@ async function openFilm(filmBrief) {
     filmPoster.src = film.poster || filmBrief.poster || "";
     filmPoster.alt = film.title;
     filmTitle.textContent = film.title;
-    filmMeta.textContent = formatFilmMeta(film);
+    filmMeta.replaceChildren();
+    for (const item of formatFilmMeta(film)) {
+      const li = document.createElement("li");
+      li.textContent = item;
+      filmMeta.appendChild(li);
+    }
     filmSynopsis.textContent = film.synopsis || "";
     filmSynopsis.classList.remove("is-expanded");
     if (filmSynopsisMore) {

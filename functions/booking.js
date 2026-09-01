@@ -78,6 +78,10 @@ async function ceFetch(pathOrUrl, { method = "GET", jar, body, headers = {} } = 
   return { res, text, jar: nextJar };
 }
 
+function hasGenreValue(genre) {
+  return Boolean(String(genre ?? "").trim());
+}
+
 /** Hide from cartelera + alerts: óperas and “sesión teta”. */
 function isHiddenFilm(film) {
   const blob = `${film?.title || ""} ${film?.slug || ""}`;
@@ -357,11 +361,29 @@ function newSessionId() {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Keep films whose CE detail page has a non-empty Género (fail-open on fetch error). */
+async function filterFilmsWithGenre(cineId, films) {
+  const cid = String(cineId || "10");
+  const results = await Promise.all(
+    (films || []).map(async (f) => {
+      try {
+        const detail = await getPelicula({ cineId: cid, filmId: f.filmId, slug: f.slug });
+        if (!hasGenreValue(detail.genre)) return null;
+      } catch {
+        return f;
+      }
+      return f;
+    }),
+  );
+  return results.filter(Boolean);
+}
+
 async function getCartelera({ cineId } = {}) {
   const cine = resolveCine(cineId);
   const { text, res } = await ceFetch(`/Cine/${cine.id}/${cine.slug}`);
   if (!res.ok) throw new HttpsError("unavailable", "No se pudo cargar la cartelera.");
-  const films = parseCarteleraHtml(text, cine).filter((f) => !isHiddenFilm(f));
+  const parsed = parseCarteleraHtml(text, cine).filter((f) => !isHiddenFilm(f));
+  const films = await filterFilmsWithGenre(cine.id, parsed);
   return { cine, films };
 }
 
@@ -684,7 +706,9 @@ module.exports = {
   CINES,
   resolveCine,
   isOpera,
+  hasGenreValue,
   isHiddenFilm,
+  filterFilmsWithGenre,
   parseCarteleraHtml,
   parsePeliculaHtml,
   parseHorariosHtml,

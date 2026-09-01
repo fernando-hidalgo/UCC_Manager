@@ -329,6 +329,7 @@ function parseSesionHtml(html) {
 const {
   CINES,
   resolveCine,
+  hasGenreValue,
   parseCarteleraHtml,
   parsePeliculaHtml,
   parseHorariosHtml,
@@ -384,6 +385,18 @@ assert(pelicula.originalTitle === "FUZE", "pelicula original once");
 assert(pelicula.genre === "Acción", "pelicula genre");
 assert(pelicula.director === "Jane Doe", "pelicula director");
 assert(pelicula.duration === "96 minutos", "pelicula duration");
+
+const peliculaNoGenre = parsePeliculaHtml(
+  `<h1>CHRISTMAS IN VERSALLES en Metromar Cinemas</h1>
+<table><tr><td>Género</td><td></td></tr></table>`,
+  "16484",
+  "christmas-in-versalles",
+  metromar,
+);
+assert(peliculaNoGenre.genre === "", "pelicula empty genre");
+assert(!hasGenreValue(peliculaNoGenre.genre), "hasGenreValue empty");
+assert(hasGenreValue("Acción"), "hasGenreValue present");
+assert(!hasGenreValue("   "), "hasGenreValue whitespace");
 
 const horariosSample = `
 <span class="badge">DIGT</span>

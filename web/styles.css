@@ -1412,7 +1412,13 @@ body.is-login {
 .film-hero__meta {
   font-size: 0.8rem;
   color: var(--color-text-muted);
-  margin-bottom: 8px;
+  margin: 0 0 8px;
+  padding-left: 1.1em;
+  list-style: disc;
+}
+
+.film-hero__meta li + li {
+  margin-top: 2px;
 }
 
 .film-hero__synopsis {
