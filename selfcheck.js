@@ -332,6 +332,7 @@ const {
   parseCarteleraHtml,
   parsePeliculaHtml,
   parseHorariosHtml,
+  parseSesionHtml: parseSesionPage,
   parseButacasHtml,
   refFromMerchantParams,
 } = require("./functions/booking.js");
@@ -392,12 +393,39 @@ const horariosSample = `
 const horarios = parseHorariosHtml(horariosSample, metromar);
 assert(horarios.length === 2, "horarios count");
 assert(horarios[0].sessionId === "336629" && horarios[0].time === "18:15", "horario first");
+assert(horarios[0].format === "DIGT" && horarios[1].format === "DIGT", "horario digt format");
+
+const horariosMultiSample = `
+<br /><span class="badge badge-secondary mr-3 mb-3" style="font-size: 1.2rem">DIGT</span>
+<a class="badge badge-primary mr-2" style="font-size: 1.2rem" href='/Sesion/10/metromar-cinemas/la-constelacion-del-perro/337328/1'>18:00</a>
+<a class="badge badge-primary mr-2" style="font-size: 1.2rem" href='/Sesion/10/metromar-cinemas/la-constelacion-del-perro/337327/1'>22:00</a>
+<br /><span class="badge badge-secondary mr-3 mb-3" style="font-size: 1.2rem">V.O.S</span>
+<a class="badge badge-primary mr-2" style="font-size: 1.2rem" href='/Sesion/10/metromar-cinemas/la-constelacion-del-perro/337326/1'>19:45</a>
+`;
+const horariosMulti = parseHorariosHtml(horariosMultiSample, metromar);
+assert(horariosMulti.length === 3, "horarios multi count");
+assert(
+  horariosMulti[0].time === "18:00" && horariosMulti[1].time === "19:45" && horariosMulti[2].time === "22:00",
+  "horarios multi chronological",
+);
+assert(horariosMulti[0].format === "DIGT" && horariosMulti[1].format === "V.O.S", "horarios multi format");
+assert(horariosMulti[1].sessionId === "337326", "horarios vose session");
 
 const horariosCerv = parseHorariosHtml(
   `<a href='/Sesion/48/cine-cervantes/la-odisea/111/1'>17:45</a>`,
   cervantes,
 );
 assert(horariosCerv.length === 1 && horariosCerv[0].time === "17:45", "cervantes horario");
+assert(horariosCerv[0].format === "", "cervantes no format");
+
+const sesionVoseSample = `
+<h1><small>Metromar Cinemas - LA CONSTELACION DEL PERRO - VOS</small></h1>
+<h4>Sala 08 - Jueves 03-09-2026 - 19:45 h </h4>
+`;
+const sesionVose = parseSesionPage(sesionVoseSample);
+assert(sesionVose.titleHeading.includes("VOS"), "sesion vose title");
+assert(sesionVose.sessionHeading.includes("Sala 08"), "sesion vose sala");
+assert(sesionVose.heading.includes("VOS"), "sesion vose heading");
 
 const sesionSample = `
 <meta name="btsg" content="tok.123">

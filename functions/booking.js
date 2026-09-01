@@ -169,36 +169,49 @@ function tableCell(html, labelRe) {
   return decodeHtml((html.match(re) || [])[1] || "").trim();
 }
 
+function sessionTimeMinutes(time) {
+  const [h, m] = String(time).split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
 /** Parse HorariosDia fragment */
 function parseHorariosHtml(html, cine) {
   const id = cine?.id || "10";
   const slug = cine?.slug || "metromar-cinemas";
   const sessions = [];
-  const re = new RegExp(
-    String.raw`href=['"]/Sesion/${id}/${slug}/([^/'"]+)/(\d+)/(\d+)['"][^>]*>\s*(\d{1,2}:\d{2})\s*<`,
+  let currentFormat = "";
+  const tokenRe = new RegExp(
+    String.raw`<span[^>]*class=['"][^'"]*badge[^'"]*['"][^>]*>\s*([^<]+?)\s*</span>|href=['"]/Sesion/${id}/${slug}/([^/'"]+)/(\d+)/(\d+)['"][^>]*>\s*(\d{1,2}:\d{2})\s*<`,
     "gi",
   );
   let m;
-  while ((m = re.exec(html))) {
-    sessions.push({
-      slug: m[1],
-      sessionId: m[2],
-      plantaId: m[3],
-      time: m[4],
-      format: "",
-    });
+  while ((m = tokenRe.exec(html))) {
+    if (m[1]) {
+      currentFormat = decodeHtml(m[1]).trim();
+    } else {
+      sessions.push({
+        slug: m[2],
+        sessionId: m[3],
+        plantaId: m[4],
+        time: m[5],
+        format: currentFormat,
+      });
+    }
   }
-  const format = decodeHtml((html.match(/badge[^>]*>\s*([A-Z0-9\-]+)\s*</i) || [])[1] || "").trim();
-  if (format) sessions.forEach((s) => (s.format = format));
+  sessions.sort((a, b) => sessionTimeMinutes(a.time) - sessionTimeMinutes(b.time));
   return sessions;
 }
 
 /** Parse Sesion ticket page */
 function parseSesionHtml(html) {
   const btsg = (html.match(/<meta\s+name=["']btsg["']\s+content=["']([^"']+)["']/i) || [])[1] || "";
-  const heading = decodeHtml(
-    (html.match(/<h4[^>]*>\s*([^<]+?)\s*<\/h4>/i) || [])[1] || "",
+  const titleHeading = decodeHtml(
+    (html.match(/<h1[^>]*>\s*<small>\s*([^<]+?)\s*<\/small>\s*<\/h1>/i) || [])[1] || "",
   ).trim();
+  const sessionHeading = decodeHtml(
+    (html.match(/<h4[^>]*>\s*((?:Sala\b)[^<]*?)\s*<\/h4>/i) || [])[1] || "",
+  ).trim();
+  const heading = titleHeading || sessionHeading;
   const hidden = {};
   for (const name of ["ID_Cine", "NombreCine", "Titulo", "ID_Sesion", "IDPlanta", "IDPromocionVuelvePor5"]) {
     const m = html.match(new RegExp(`name=["']${name}["']\\s+value=["']([^"']*)["']`, "i"));
@@ -263,6 +276,8 @@ function parseSesionHtml(html) {
   return {
     btsg,
     heading,
+    titleHeading,
+    sessionHeading,
     hidden,
     prices,
     menus,
@@ -405,6 +420,8 @@ async function startSesion(uid, { cineId, sessionId, slug, plantaId }) {
   return {
     bookingId,
     heading: parsed.heading,
+    titleHeading: parsed.titleHeading,
+    sessionHeading: parsed.sessionHeading,
     prices: parsed.prices.map(({ encryptedCode, ...rest }) => rest),
     // keep encrypted only server-side; client needs indices
     priceIndexes: parsed.prices.map((_, i) => i),

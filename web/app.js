@@ -232,6 +232,15 @@ function isShowtimePast(showtime) {
   return d < getToday();
 }
 
+function sessionTimeMinutes(time) {
+  const [h, m] = String(time).split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+function isVoseFormat(format) {
+  return /^v\.?o\.?s\.?e?$/i.test(String(format || "").replace(/\s/g, ""));
+}
+
 function addDays(dateStr, days) {
   const date = parseLocalDate(dateStr);
   date.setDate(date.getDate() + days);
@@ -1187,6 +1196,9 @@ let booking = {
   sessions: [],
   bookingId: "",
   heading: "",
+  titleHeading: "",
+  sessionHeading: "",
+  sessionFormat: "",
   prices: [],
   menus: [],
   qtys: [],
@@ -1201,6 +1213,9 @@ let booking = {
 function resetBookingSession() {
   booking.bookingId = "";
   booking.heading = "";
+  booking.titleHeading = "";
+  booking.sessionHeading = "";
+  booking.sessionFormat = "";
   booking.prices = [];
   booking.menus = [];
   booking.qtys = [];
@@ -1235,11 +1250,23 @@ function showCarteleraView(name) {
 }
 
 function syncBookingFilmTitles() {
-  const title = booking.film?.title || "";
+  const title = bookingFilmDisplayTitle();
   document.querySelectorAll("[data-booking-film-title]").forEach((el) => {
     el.textContent = title;
     el.hidden = !title;
   });
+}
+
+function bookingFilmDisplayTitle() {
+  const base = booking.film?.title || "";
+  if (booking.titleHeading) {
+    const parts = booking.titleHeading.split(/\s*-\s*/);
+    if (parts.length >= 2) return parts.slice(1).join(" - ").trim();
+    return booking.titleHeading;
+  }
+  if (!base) return "";
+  if (isVoseFormat(booking.sessionFormat)) return `${base} - VOS`;
+  return base;
 }
 
 function showCarteleraLoading(text) {
@@ -1544,7 +1571,9 @@ async function loadHorarios() {
   filmSessions.appendChild(loading);
   try {
     const data = await getHorariosRemote(booking.cine.id, booking.film.filmId, booking.date);
-    booking.sessions = data.sessions || [];
+    booking.sessions = (data.sessions || []).sort(
+      (a, b) => sessionTimeMinutes(a.time) - sessionTimeMinutes(b.time),
+    );
     filmSessions.replaceChildren();
     if (!booking.sessions.length) {
       const empty = document.createElement("p");
@@ -1557,7 +1586,8 @@ async function loadHorarios() {
       const chip = document.createElement("button");
       chip.type = "button";
       chip.className = "session-chip";
-      chip.textContent = s.format ? `${s.time} · ${s.format}` : s.time;
+      if (isVoseFormat(s.format)) chip.classList.add("session-chip--vose");
+      chip.textContent = s.time;
       chip.addEventListener("click", () => startSession(s, chip));
       filmSessions.appendChild(chip);
     }
@@ -1582,12 +1612,16 @@ async function startSession(session, chip) {
     });
     booking.bookingId = data.bookingId;
     booking.heading = data.heading || "";
+    booking.titleHeading = data.titleHeading || "";
+    booking.sessionHeading = data.sessionHeading || "";
+    booking.sessionFormat = session.format || "";
     booking.prices = data.prices || [];
     booking.menus = data.menus || [];
     booking.qtys = booking.prices.map(() => 0);
     booking.menuQtys = {};
     booking.selectedSeats = [];
-    ticketsHeading.textContent = booking.heading;
+    ticketsHeading.textContent = booking.sessionHeading || booking.heading;
+    syncBookingFilmTitles();
     promoBlock.hidden = !data.promoEnabled;
     fillPromoSelect();
     promoRef.value = "";

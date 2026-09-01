@@ -14,6 +14,9 @@
   --color-primary-soft: #e6eef9;
   --color-primary-soft-hover: #d0dff5;
   --color-accent: #d91f45;
+  --color-vose: #6b4ce6;
+  --color-vose-soft: #f0e6ff;
+  --color-vose-soft-hover: #e4d9fc;
   --color-text: #001845;
   --color-text-muted: #5c6478;
   --color-border: #e0e5ef;
@@ -1499,6 +1502,16 @@ body.is-login {
 .session-chip:disabled {
   opacity: 0.5;
   cursor: wait;
+}
+
+.session-chip--vose {
+  background: var(--color-vose-soft);
+  border-color: var(--color-vose);
+  color: var(--color-vose);
+}
+
+.session-chip--vose:hover {
+  background: var(--color-vose-soft-hover);
 }
 
 .price-list {
