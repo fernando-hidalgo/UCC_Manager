@@ -505,6 +505,8 @@ assert(refFromMerchantParams({ Ds_MerchantParameters: "no-base64-json" }) === ""
 const {
   isOpera,
   diffNewFilms,
+  excludeNotifiedFilms,
+  resolveNotifiedFilmIds,
   unsubToken,
   verifyUnsubToken,
   filmUrl,
@@ -534,6 +536,23 @@ const brandNew = diffNewFilms(cur, prev);
 assert(brandNew.length === 3, "diff new ids");
 const notify = brandNew.filter((f) => !isOpera(f));
 assert(notify.length === 1 && notify[0].filmId === "4", "batch excludes opera and teta");
+
+assert(excludeNotifiedFilms(notify, ["4"]).length === 0, "exclude already notified");
+assert(excludeNotifiedFilms(notify, ["99"]).length === 1, "exclude keeps unknown");
+const pipeline = excludeNotifiedFilms(diffNewFilms(cur, prev), ["3"]);
+assert(pipeline.length === 2 && pipeline.every((f) => f.filmId !== "3"), "diff+notified pipeline");
+assert(
+  JSON.stringify(resolveNotifiedFilmIds({ filmIds: ["1", "2"] })) === JSON.stringify(["1", "2"]),
+  "migrate notified from filmIds",
+);
+assert(
+  JSON.stringify(resolveNotifiedFilmIds({ filmIds: ["1"], notifiedFilmIds: ["9"] })) === JSON.stringify(["9"]),
+  "prefer notifiedFilmIds",
+);
+assert(
+  JSON.stringify(resolveNotifiedFilmIds({})) === JSON.stringify([]),
+  "migrate empty meta",
+);
 
 const secret = "test-unsub-secret";
 const tok = unsubToken("uid123", secret);

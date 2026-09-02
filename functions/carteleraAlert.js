@@ -29,6 +29,19 @@ function diffNewFilms(currentFilms, storedIds) {
   return (currentFilms || []).filter((f) => f?.filmId && !stored.has(String(f.filmId)));
 }
 
+/** Drop films whose filmId was already emailed. */
+function excludeNotifiedFilms(films, notifiedIds) {
+  const sent = new Set((notifiedIds || []).map(String));
+  return (films || []).filter((f) => f?.filmId && !sent.has(String(f.filmId)));
+}
+
+/** Lazy migration: missing notifiedFilmIds → treat snapshot filmIds as already notified. */
+function resolveNotifiedFilmIds(metaData) {
+  const data = metaData || {};
+  if (Array.isArray(data.notifiedFilmIds)) return data.notifiedFilmIds;
+  return data.filmIds || [];
+}
+
 function filmUrl(film, cine) {
   const c = cine || CINES[film.cineId] || CINES["10"];
   return `${CE}/PeliculaCine/${c.id}/${c.slug}/${film.filmId}/${film.slug}`;
@@ -276,14 +289,16 @@ async function processCineSnapshot(cineId) {
   if (!metaSnap.exists) {
     await metaRef.set({
       filmIds: currentIds,
+      notifiedFilmIds: currentIds,
       updatedAt: FieldValue.serverTimestamp(),
     });
     return { seeded: true, brandNew: [], toNotify: [], currentIds, cine };
   }
 
-  const storedIds = metaSnap.data()?.filmIds || [];
+  const metaData = metaSnap.data() || {};
+  const storedIds = metaData.filmIds || [];
   const brandNew = diffNewFilms(tagged, storedIds);
-  const toNotify = brandNew;
+  const toNotify = excludeNotifiedFilms(brandNew, resolveNotifiedFilmIds(metaData));
 
   await metaRef.set({
     filmIds: currentIds,
@@ -352,6 +367,21 @@ async function runCarteleraAlert({
     mailed += 1;
   }
 
+  if (mailed > 0) {
+    const byCine = new Map();
+    for (const f of allNotify) {
+      const id = String(f.cineId || "10");
+      if (!byCine.has(id)) byCine.set(id, []);
+      byCine.get(id).push(String(f.filmId));
+    }
+    for (const [cineId, ids] of byCine) {
+      await metaRefFor(cineId).set(
+        { notifiedFilmIds: FieldValue.arrayUnion(...ids) },
+        { merge: true },
+      );
+    }
+  }
+
   return {
     seeded: anySeeded,
     newCount: totalBrandNew,
@@ -388,6 +418,8 @@ module.exports = {
   ALERT_CINE_IDS,
   isOpera,
   diffNewFilms,
+  excludeNotifiedFilms,
+  resolveNotifiedFilmIds,
   filmUrl,
   unsubToken,
   verifyUnsubToken,
