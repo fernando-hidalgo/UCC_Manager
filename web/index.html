@@ -393,6 +393,47 @@
     </div>
   </div>
 
+  <div id="send-overlay" class="barcode-overlay" hidden>
+    <div class="barcode-overlay__panel send-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="send-overlay-title">
+      <div class="barcode-overlay__header">
+        <h2 id="send-overlay-title" class="barcode-overlay__title">Enviar código</h2>
+        <button type="button" class="barcode-overlay__close" id="send-overlay-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="send-overlay__code" id="send-overlay-code"></p>
+      <form id="send-form" class="send-overlay__form">
+        <label class="form__label" for="send-username">Nombre de usuario</label>
+        <input
+          type="text"
+          id="send-username"
+          class="form__input"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          required
+          placeholder="usuario.ejemplo"
+          spellcheck="false"
+        >
+        <p id="send-error" class="form-message form-message--error" hidden></p>
+        <div class="form__actions send-overlay__actions">
+          <button type="submit" class="btn btn--primary btn--icon" id="send-submit">Enviar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="alert-overlay" class="barcode-overlay" hidden>
+    <div class="barcode-overlay__panel send-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="alert-overlay-title">
+      <div class="barcode-overlay__header">
+        <h2 id="alert-overlay-title" class="barcode-overlay__title">Aviso</h2>
+        <button type="button" class="barcode-overlay__close" id="alert-overlay-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="alert-overlay__message" id="alert-overlay-message"></p>
+      <div class="form__actions send-overlay__actions">
+        <button type="button" class="btn btn--primary" id="alert-overlay-ok">Entendido</button>
+      </div>
+    </div>
+  </div>
+
   <form id="pay-gateway-form" method="POST" hidden aria-hidden="true"></form>
 
   <script src="barcode.js"></script>

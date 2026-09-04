@@ -31,6 +31,12 @@ function entryToFields(entry) {
   if (entry.pendingActivation) {
     fields.pendingActivation = { booleanValue: true };
   }
+  if (entry.isNewGift) {
+    fields.isNewGift = { booleanValue: true };
+  }
+  if (entry.giftedFrom) {
+    fields.giftedFrom = { stringValue: entry.giftedFrom };
+  }
   return fields;
 }
 
@@ -45,6 +51,12 @@ function fieldsToEntry(fields) {
   };
   if (fields.pendingActivation?.booleanValue) {
     entry.pendingActivation = true;
+  }
+  if (fields.isNewGift?.booleanValue) {
+    entry.isNewGift = true;
+  }
+  if (fields.giftedFrom?.stringValue) {
+    entry.giftedFrom = fields.giftedFrom.stringValue;
   }
   return entry;
 }
@@ -168,6 +180,48 @@ async function upsertRemoteCode(entry) {
     method: "PATCH",
     session,
     body: { fields: entryToFields(entry) },
+  });
+}
+
+async function clearRemoteGiftFlag(entry) {
+  const session = await getValidSession();
+  if (!session) return;
+
+  const docId = codeDocId(entry.code);
+  // Field in updateMask but absent from document → deleted.
+  await firestoreFetch(`/users/${session.uid}/codes/${docId}?updateMask.fieldPaths=isNewGift`, {
+    method: "PATCH",
+    session,
+    body: { fields: {} },
+  });
+}
+
+async function callCallable(name, data) {
+  const session = await getValidSession();
+  if (!session) throw new Error("unauthenticated");
+
+  const url = `https://us-central1-${FIREBASE_CONFIG.projectId}.cloudfunctions.net/${name}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.idToken}`,
+    },
+    body: JSON.stringify({ data }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json.error) {
+    const err = new Error(json.error?.message || "callable_failed");
+    err.code = json.error?.status || String(res.status);
+    throw err;
+  }
+  return json.result;
+}
+
+async function transferCodeRemote(code, toUsername) {
+  return callCallable("transferCode", {
+    code: String(code).trim(),
+    toUsername: String(toUsername).trim(),
   });
 }
 

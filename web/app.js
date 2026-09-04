@@ -6,6 +6,8 @@ import {
   upsertCode,
   deleteCodeRemote,
   syncCodes,
+  clearGiftFlag,
+  transferCodeRemote,
   deleteTicketRemote,
   syncTickets,
   upsertTicket,
@@ -81,6 +83,20 @@ const ticketOverlayClose = document.getElementById("ticket-overlay-close");
 const ticketOverlayTitle = document.getElementById("ticket-overlay-title");
 const ticketOverlayQr = document.getElementById("ticket-overlay-qr");
 const ticketOverlayBarcode = document.getElementById("ticket-overlay-barcode");
+const sendOverlay = document.getElementById("send-overlay");
+const sendOverlayClose = document.getElementById("send-overlay-close");
+const sendOverlayCode = document.getElementById("send-overlay-code");
+const sendForm = document.getElementById("send-form");
+const sendEmail = document.getElementById("send-username");
+const sendError = document.getElementById("send-error");
+const sendSubmit = document.getElementById("send-submit");
+const alertOverlay = document.getElementById("alert-overlay");
+const alertOverlayClose = document.getElementById("alert-overlay-close");
+const alertOverlayMessage = document.getElementById("alert-overlay-message");
+const alertOverlayOk = document.getElementById("alert-overlay-ok");
+let sendTargetCode = "";
+
+const SEND_USED_MSG = "El código a enviar ya ha sido usado. Se ha eliminado";
 
 let user = null;
 let codes = [];
@@ -113,6 +129,74 @@ function closeBarcodeOverlay() {
   if (barcodeOverlay.hidden) return;
   barcodeOverlay.hidden = true;
   barcodeOverlaySvg.replaceChildren();
+}
+
+function setSendError(text) {
+  if (!text) {
+    sendError.hidden = true;
+    sendError.textContent = "";
+    return;
+  }
+  sendError.hidden = false;
+  sendError.textContent = text;
+}
+
+function openSendOverlay(code) {
+  sendTargetCode = code;
+  sendOverlayCode.textContent = code;
+  sendEmail.value = "";
+  setSendError("");
+  sendSubmit.disabled = false;
+  sendOverlay.hidden = false;
+  sendEmail.focus();
+}
+
+function closeSendOverlay() {
+  if (sendOverlay.hidden) return;
+  sendOverlay.hidden = true;
+  sendTargetCode = "";
+  sendEmail.value = "";
+  setSendError("");
+}
+
+function openAlertOverlay(message) {
+  alertOverlayMessage.textContent = message;
+  alertOverlay.hidden = false;
+  alertOverlayOk.focus();
+}
+
+function closeAlertOverlay() {
+  if (alertOverlay.hidden) return;
+  alertOverlay.hidden = true;
+  alertOverlayMessage.textContent = "";
+}
+
+async function beginSendCode(code, sendBtn) {
+  if (!user) {
+    showListMessage("Inicia sesión para enviar.", "error");
+    return;
+  }
+  sendBtn.disabled = true;
+  try {
+    const result = await validateCodeRemote(code);
+    if (!isSavableStatus(result?.status)) {
+      try {
+        await deleteCodeRemote(user.uid, code);
+      } catch (err) {
+        console.error(err);
+      }
+      saveCache(codes.filter((c) => c.code.trim() !== code.trim()));
+      renderList();
+      openAlertOverlay(SEND_USED_MSG);
+      return;
+    }
+    openSendOverlay(code);
+  } catch (err) {
+    console.error(err);
+    showListMessage("No se pudo comprobar el código.", "error");
+  } finally {
+    sendBtn.disabled = false;
+  }
 }
 
 let loginBgTimer = null;
@@ -481,6 +565,7 @@ const ICONS = {
   eye: "M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
   trash:
     "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z",
+  send: "M2.01 21L23 12 2.01 3 2 10l15 2-15 2z",
 };
 
 function fillBtn(btn, iconKey, label) {
@@ -490,10 +575,96 @@ function fillBtn(btn, iconKey, label) {
   btn.replaceChildren(createMetaIcon(ICONS[iconKey]), span);
 }
 
+fillBtn(sendSubmit, "send", "Enviar");
+
 function setBtnLabel(btn, label) {
   const span = btn.querySelector(".btn__label");
   if (span) span.textContent = label;
   else btn.textContent = label;
+}
+
+async function unwrapGift(item) {
+  if (!user) return;
+  const { isNewGift, ...rest } = item;
+  saveCache(codes.map((c) => (c.code.trim() === item.code.trim() ? rest : c)));
+  renderList();
+  try {
+    await clearGiftFlag(user.uid, item);
+  } catch (err) {
+    console.error(err);
+  }
+}
+
+const FILM_UNWRAP_MS = 2200;
+
+function playFilmUnwrap(card, onDone) {
+  if (card.classList.contains("card--gift-running")) return;
+  const strip = card.querySelector(".card__film-strip");
+  if (!strip) {
+    onDone();
+    return;
+  }
+  // Keep the wide cell; only clear its text so it can scroll off-screen.
+  const main = strip.querySelector(".card__film-cell--main");
+  if (main) main.replaceChildren();
+  for (let i = 0; i < 16; i += 1) {
+    const cell = document.createElement("div");
+    cell.className = "card__film-cell";
+    strip.appendChild(cell);
+  }
+  // Measure after layout, then start the run so the wide cell exits left.
+  void strip.offsetWidth;
+  const shiftPx = Math.max(
+    strip.scrollWidth - card.clientWidth + (main?.offsetWidth || 148),
+    card.clientWidth,
+  );
+  strip.style.setProperty("--film-shift", `${shiftPx}px`);
+  card.classList.add("card--gift-running");
+  card.removeAttribute("tabindex");
+  card.removeAttribute("role");
+  setTimeout(onDone, FILM_UNWRAP_MS);
+}
+
+function createGiftCard(item) {
+  const card = document.createElement("article");
+  card.className = "card card--gift";
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", "Código recibido. Toca para abrir");
+  card.title = "Toca para revelar el código";
+
+  const strip = document.createElement("div");
+  strip.className = "card__film-strip";
+  strip.setAttribute("aria-hidden", "true");
+
+  const left = document.createElement("div");
+  left.className = "card__film-cell";
+  const main = document.createElement("div");
+  main.className = "card__film-cell card__film-cell--main";
+  const right = document.createElement("div");
+  right.className = "card__film-cell";
+
+  const hint = document.createElement("p");
+  hint.className = "card__gift-hint";
+  hint.innerHTML = "<span>¡Has recibido un código!</span><span>Toca para abrir</span>";
+  main.appendChild(hint);
+  strip.append(left, main, right);
+  card.appendChild(strip);
+
+  let busy = false;
+  const open = () => {
+    if (busy) return;
+    busy = true;
+    playFilmUnwrap(card, () => unwrapGift(item));
+  };
+  card.addEventListener("click", open);
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open();
+    }
+  });
+  return card;
 }
 
 function openTicketOverlay(ticket) {
@@ -590,6 +761,8 @@ function renderTickets() {
 }
 
 function createCard(item) {
+  if (item.isNewGift) return createGiftCard(item);
+
   const daysRemaining = getDaysRemaining(item.expiresAt);
   const waiting = isWaitingForActivation(item);
   const urgency = getCardUrgency(daysRemaining, waiting);
@@ -667,6 +840,13 @@ function createCard(item) {
     barcodeBtn.addEventListener("click", () => openBarcodeOverlay(item.code));
   }
 
+  const sendBtn = document.createElement("button");
+  sendBtn.type = "button";
+  sendBtn.className = "btn btn--secondary btn--icon";
+  sendBtn.title = "Enviar a otro usuario";
+  fillBtn(sendBtn, "send", "Enviar");
+  sendBtn.addEventListener("click", () => beginSendCode(item.code, sendBtn));
+
   const deleteBtn = document.createElement("button");
   deleteBtn.type = "button";
   deleteBtn.className = "btn btn--danger btn--icon";
@@ -687,7 +867,7 @@ function createCard(item) {
     }
   });
 
-  actions.append(copyBtn, barcodeBtn, deleteBtn);
+  actions.append(copyBtn, barcodeBtn, sendBtn, deleteBtn);
   card.append(header, meta, actions);
   return card;
 }
@@ -697,18 +877,20 @@ function renderList() {
   if (active.length !== codes.length) saveCache(active);
 
   codeList.innerHTML = "";
-  if (active.length === 0) {
-    emptyList.hidden = false;
-    return;
-  }
-  emptyList.hidden = true;
 
   const entries = active.map((item) => ({
     item,
     daysRemaining: getDaysRemaining(item.expiresAt),
   }));
+  const sorted = sortEntries(entries).map(({ item }) => item);
 
-  sortEntries(entries).forEach(({ item }) => {
+  if (sorted.length === 0) {
+    emptyList.hidden = false;
+    return;
+  }
+  emptyList.hidden = true;
+
+  sorted.forEach((item) => {
     codeList.appendChild(createCard(item));
   });
 }
@@ -2076,10 +2258,50 @@ ticketOverlayClose.addEventListener("click", closeTicketOverlay);
 ticketOverlay.addEventListener("click", (e) => {
   if (e.target === ticketOverlay) closeTicketOverlay();
 });
+
+sendOverlayClose.addEventListener("click", closeSendOverlay);
+sendOverlay.addEventListener("click", (e) => {
+  if (e.target === sendOverlay) closeSendOverlay();
+});
+
+alertOverlayClose.addEventListener("click", closeAlertOverlay);
+alertOverlayOk.addEventListener("click", closeAlertOverlay);
+alertOverlay.addEventListener("click", (e) => {
+  if (e.target === alertOverlay) closeAlertOverlay();
+});
+
+sendForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!user) {
+    setSendError("Inicia sesión para enviar.");
+    return;
+  }
+  const email = sendEmail.value.trim();
+  if (!email) {
+    setSendError("Introduce un nombre de usuario.");
+    return;
+  }
+  sendSubmit.disabled = true;
+  setSendError("");
+  try {
+    await transferCodeRemote(sendTargetCode, email);
+    saveCache(codes.filter((c) => c.code.trim() !== sendTargetCode.trim()));
+    closeSendOverlay();
+    showListMessage("Código enviado.");
+    renderList();
+  } catch (err) {
+    console.error(err);
+    setSendError(err?.message || "No se pudo enviar el código.");
+    sendSubmit.disabled = false;
+  }
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   closeBarcodeOverlay();
   closeTicketOverlay();
+  closeSendOverlay();
+  closeAlertOverlay();
 });
 
 let authReady = false;

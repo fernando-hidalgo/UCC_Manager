@@ -4,6 +4,8 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
 const functionsV1 = require("firebase-functions/v1");
 const { initializeApp } = require("firebase-admin/app");
+const { getAuth } = require("firebase-admin/auth");
+const { getFirestore } = require("firebase-admin/firestore");
 const { GoogleAuth } = require("google-auth-library");
 const booking = require("./booking");
 const carteleraAlert = require("./carteleraAlert");
@@ -14,6 +16,10 @@ const { formatSeatsText } = require("./seatsFormat");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
+
+function codeDocId(code) {
+  return encodeURIComponent(String(code || "").trim()).replace(/%/g, "_");
+}
 
 const gmailUser = defineSecret("GMAIL_USER");
 const gmailAppPassword = defineSecret("GMAIL_APP_PASSWORD");
@@ -139,6 +145,94 @@ exports.purgeDeadCodes = onCall(async (request) => {
     console.error("purgeDeadCodes", err);
     throw new HttpsError("internal", "No se pudieron comprobar los códigos.");
   }
+});
+
+exports.transferCode = onCall(async (request) => {
+  requireAuth(request);
+  const senderUid = request.auth.uid;
+  const code = String(request.data?.code || "").trim();
+  const senderEmail = String(request.auth.token?.email || "").trim().toLowerCase();
+  const rawUser = String(
+    request.data?.toUsername || request.data?.toEmail || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!code) throw new HttpsError("invalid-argument", "Falta el código.");
+  if (!rawUser) {
+    throw new HttpsError("invalid-argument", "Introduce un nombre de usuario.");
+  }
+
+  let toEmail;
+  if (rawUser.includes("@")) {
+    toEmail = rawUser;
+  } else {
+    const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+    if (!domain) {
+      throw new HttpsError("failed-precondition", "No se pudo resolver el destinatario.");
+    }
+    if (!/^[a-z0-9._%+-]+$/i.test(rawUser)) {
+      throw new HttpsError("invalid-argument", "Nombre de usuario no válido.");
+    }
+    toEmail = `${rawUser}@${domain}`;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    throw new HttpsError("invalid-argument", "Nombre de usuario no válido.");
+  }
+
+  const senderUser = senderEmail.includes("@") ? senderEmail.split("@")[0] : "";
+  const targetUser = toEmail.split("@")[0];
+  if (senderEmail && (senderEmail === toEmail || senderUser === targetUser)) {
+    throw new HttpsError("invalid-argument", "No puedes enviártelo a ti mismo.");
+  }
+
+  let recipient;
+  try {
+    recipient = await getAuth().getUserByEmail(toEmail);
+  } catch (err) {
+    if (err?.code === "auth/user-not-found") {
+      throw new HttpsError("not-found", "Ese usuario no existe");
+    }
+    console.error("transferCode getUserByEmail", err);
+    throw new HttpsError("internal", "No se pudo comprobar el usuario.");
+  }
+
+  if (recipient.uid === senderUid) {
+    throw new HttpsError("invalid-argument", "No puedes enviártelo a ti mismo.");
+  }
+
+  const docId = codeDocId(code);
+  const db = getFirestore();
+  const senderRef = db.doc(`users/${senderUid}/codes/${docId}`);
+  const recipientRef = db.doc(`users/${recipient.uid}/codes/${docId}`);
+
+  await db.runTransaction(async (tx) => {
+    const senderSnap = await tx.get(senderRef);
+    const recipientSnap = await tx.get(recipientRef);
+    if (!senderSnap.exists) {
+      throw new HttpsError("not-found", "No tienes ese código.");
+    }
+    if (recipientSnap.exists) {
+      throw new HttpsError("already-exists", "Ese usuario ya tiene este código.");
+    }
+
+    const data = senderSnap.data() || {};
+    const payload = {
+      code: data.code || code,
+      createdAt: data.createdAt || "",
+      expiresAt: data.expiresAt || "",
+      seats: Number(data.seats) || 1,
+      isNewGift: true,
+      giftedFrom: senderEmail || senderUid,
+    };
+    if (data.pendingActivation) payload.pendingActivation = true;
+
+    tx.set(recipientRef, payload);
+    tx.delete(senderRef);
+  });
+
+  return { ok: true, toEmail };
 });
 
 function parseYmd(value) {

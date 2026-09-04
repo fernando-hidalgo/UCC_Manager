@@ -70,6 +70,15 @@ export async function validateCodeRemote(code) {
   return res.data;
 }
 
+export async function transferCodeRemote(code, toUsername) {
+  const fn = httpsCallable(functions, "transferCode");
+  const res = await fn({
+    code: String(code).trim(),
+    toUsername: String(toUsername).trim(),
+  });
+  return res.data;
+}
+
 export async function fetchEntradaRemote(referencia) {
   const fn = httpsCallable(functions, "fetchEntrada");
   const res = await fn({ referencia: String(referencia).trim() });
@@ -115,6 +124,8 @@ export async function pullCodes(uid) {
       seats: Number(data.seats) || 1,
     };
     if (data.pendingActivation) entry.pendingActivation = true;
+    if (data.isNewGift) entry.isNewGift = true;
+    if (data.giftedFrom) entry.giftedFrom = data.giftedFrom;
     return entry;
   });
 }
@@ -127,7 +138,17 @@ export async function upsertCode(uid, entry) {
     seats: entry.seats,
   };
   if (entry.pendingActivation) payload.pendingActivation = true;
+  if (entry.isNewGift) payload.isNewGift = true;
+  if (entry.giftedFrom) payload.giftedFrom = entry.giftedFrom;
   await setDoc(doc(codesCol(uid), codeDocId(entry.code)), payload);
+}
+
+/** Clear gift wrap flag after the recipient opens the card. */
+export async function clearGiftFlag(uid, entry) {
+  const { isNewGift, ...rest } = entry;
+  const next = { ...rest };
+  await upsertCode(uid, next);
+  return next;
 }
 
 export async function deleteCodeRemote(uid, code) {
