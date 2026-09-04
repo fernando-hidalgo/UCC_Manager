@@ -384,7 +384,7 @@ const pelicula = parsePeliculaHtml(peliculaSample, "1", "cuenta-atras", metromar
 assert(pelicula.originalTitle === "FUZE", "pelicula original once");
 assert(pelicula.genre === "Acción", "pelicula genre");
 assert(pelicula.director === "Jane Doe", "pelicula director");
-assert(pelicula.duration === "96 minutos", "pelicula duration");
+assert(pelicula.duration === "96 minutos (1h 36 min)", "pelicula duration");
 
 const peliculaNoGenre = parsePeliculaHtml(
   `<h1>CHRISTMAS IN VERSALLES en Metromar Cinemas</h1>

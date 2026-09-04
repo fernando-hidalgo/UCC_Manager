@@ -17,8 +17,7 @@
   },
   "permissions": [
     "storage",
-    "identity",
-    "alarms"
+    "identity"
   ],
   "host_permissions": [
     "https://www.compraentradas.com/*",

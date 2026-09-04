@@ -142,7 +142,8 @@ function parsePeliculaHtml(html, filmId, slug, cine) {
   const originalTitle = tableCell(html, "T[ií]tulo original");
   const genre = tableCell(html, "G[eé]nero");
   const director = tableCell(html, "Director");
-  const duration = tableCell(html, "Duraci[oó]n");
+  const rawDuration = tableCell(html, "Duraci[oó]n");
+  const duration = formatDuration(rawDuration);
   const synopsis = decodeHtml(
     (html.match(/Sinopsis:<\/strong>\s*([^<]+)/i) || [])[1] || "",
   ).trim();
@@ -165,6 +166,18 @@ function parsePeliculaHtml(html, filmId, slug, cine) {
 }
 
 /** Value cell in the same table row as a label. */
+/** "96 minutos" → "96 minutos (1h 36 min)". Passthrough if not parseable. */
+function formatDuration(raw) {
+  const s = String(raw || "").trim();
+  const m = s.match(/^(\d+)\s*minutos?$/i);
+  if (!m) return s;
+  const total = Number(m[1]);
+  if (total < 60) return s;
+  const h = Math.floor(total / 60);
+  const r = total % 60;
+  return r ? `${s} (${h}h ${r} min)` : `${s} (${h}h)`;
+}
+
 function tableCell(html, labelRe) {
   const re = new RegExp(
     String.raw`<tr[^>]*>[\s\S]*?(?:${labelRe})[\s\S]*?<td[^>]*>\s*([^<]*)`,
@@ -709,6 +722,7 @@ module.exports = {
   hasGenreValue,
   isHiddenFilm,
   filterFilmsWithGenre,
+  formatDuration,
   parseCarteleraHtml,
   parsePeliculaHtml,
   parseHorariosHtml,

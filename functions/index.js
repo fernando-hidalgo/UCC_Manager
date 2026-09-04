@@ -392,7 +392,7 @@ exports.onAuthUserCreate = functionsV1.auth.user().onCreate(async (user) => {
 
 exports.purgeDeadCodesDaily = onSchedule(
   {
-    schedule: "0 18 * * *",
+    schedule: "0 8 * * *",
     timeZone: "Europe/Madrid",
     timeoutSeconds: 540,
     memory: "256MiB",

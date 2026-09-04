@@ -1062,11 +1062,6 @@ async function enterApp() {
     /* use session cache */
   }
   try {
-    await browser.runtime.sendMessage({ type: "purge-dead-codes" });
-  } catch {
-    /* ignore */
-  }
-  try {
     await syncTicketsWithCloud(getTickets, saveTickets);
   } catch {
     /* use session cache */

@@ -10,7 +10,6 @@ import {
   syncTickets,
   upsertTicket,
   validateCodeRemote,
-  purgeDeadCodesRemote,
   fetchEntradaRemote,
   getCarteleraRemote,
   getPeliculaRemote,
@@ -30,7 +29,6 @@ import { readTicketImage } from "./ocr.js";
 import { formatSeatsText } from "./seatsFormat.js";
 
 const VALIDITY_DAYS = 59;
-const DEAD_PURGE_KEY = "ucc_last_dead_code_purge";
 const WARNING_DAYS = 5;
 const CRITICAL_DAYS = 2;
 const ACTIVATION_WAIT_DAYS = 2;
@@ -440,20 +438,6 @@ function purgeExpired(list) {
   return activateReady(list.filter((item) => getDaysRemaining(item.expiresAt) > 0));
 }
 
-function madridYmd() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid" }).format(new Date());
-}
-
-function madridHour() {
-  return Number(
-    new Intl.DateTimeFormat("en-GB", {
-      timeZone: "Europe/Madrid",
-      hour: "numeric",
-      hour12: false,
-    }).format(new Date()),
-  );
-}
-
 function applyPurgedCodes(purged) {
   if (!Array.isArray(purged) || !purged.length) return false;
   const dead = new Set(purged.map((c) => String(c).trim()));
@@ -462,33 +446,6 @@ function applyPurgedCodes(purged) {
   renderList();
   fillPromoSelect();
   return true;
-}
-
-async function purgeDeadCodesFromCloud() {
-  if (!user?.uid) return null;
-  try {
-    const result = await purgeDeadCodesRemote();
-    if (applyPurgedCodes(result?.purged)) {
-      showListMessage(
-        result.purged.length === 1
-          ? "1 código usado eliminado automáticamente."
-          : `${result.purged.length} códigos usados eliminados automáticamente.`,
-      );
-    }
-    return result;
-  } catch (err) {
-    console.error("purgeDeadCodes", err);
-    return null;
-  }
-}
-
-async function maybePurgeDeadCodesDaily() {
-  if (!user?.uid) return;
-  const today = madridYmd();
-  if (madridHour() < 18) return;
-  if (localStorage.getItem(DEAD_PURGE_KEY) === today) return;
-  const result = await purgeDeadCodesFromCloud();
-  if (result) localStorage.setItem(DEAD_PURGE_KEY, today);
 }
 
 function createMetaIcon(pathD, viewBox = "0 0 24 24") {
@@ -993,8 +950,6 @@ async function syncFromCloud() {
   const mergedTickets = await syncTickets(user.uid, localTickets);
   saveTicketsCache(mergedTickets);
   renderTickets();
-
-  await purgeDeadCodesFromCloud();
 }
 
 async function enterApp(authUser) {
@@ -1016,7 +971,6 @@ async function enterApp(authUser) {
   }
   try {
     await syncFromCloud();
-    await maybePurgeDeadCodesDaily();
   } catch (err) {
     console.error(err);
     codes = purgeExpired(loadCache());
@@ -2122,12 +2076,6 @@ ticketOverlayClose.addEventListener("click", closeTicketOverlay);
 ticketOverlay.addEventListener("click", (e) => {
   if (e.target === ticketOverlay) closeTicketOverlay();
 });
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible" && user) {
-    maybePurgeDeadCodesDaily();
-  }
-});
-
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   closeBarcodeOverlay();

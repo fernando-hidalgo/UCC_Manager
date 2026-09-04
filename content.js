@@ -225,8 +225,6 @@
 
     wrap.append(btn, status);
     frame.appendChild(wrap);
-
-    browser.runtime.sendMessage({ type: "purge-dead-codes" }).catch(() => {});
   }
 
   if (document.readyState === "loading") {
