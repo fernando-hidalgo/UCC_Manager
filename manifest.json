@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UCC Manager",
-  "version": "1.4.5",
+  "version": "1.4.6",
   "description": "Agenda de códigos de descuento y entradas para Unión Cine Ciudad (Metromar)",
   "browser_specific_settings": {
     "gecko": {
