@@ -210,6 +210,23 @@ assert(!isShowtimePast("", refDay), "empty showtime not skipped");
 assert(shouldSkipEntrada(parsed, refDay), "parsed past showtime skips entrada");
 assert(!shouldSkipEntrada({ showtime: "10/08/2026 - 20:00" }, refDay), "parsed future keeps entrada");
 
+const { isTicketPast, parseShowtimeStartMs } = require("./functions/ticketPurge");
+assert(parseShowtimeStartMs("17/06/2026 - 19:30 - Sala 3") != null, "parse showtime start ms");
+assert(!isTicketPast("", Date.UTC(2026, 7, 5, 10, 0)), "empty showtime not past");
+assert(
+  isTicketPast("04/08/2026 - 19:30", Date.UTC(2026, 7, 5, 6, 0)),
+  "ticket past after session",
+);
+assert(
+  !isTicketPast("05/08/2026 - 19:30", Date.UTC(2026, 7, 5, 6, 0)),
+  "ticket future before session",
+);
+{
+  const start = parseShowtimeStartMs("05/08/2026 - 19:30");
+  assert(isTicketPast("05/08/2026 - 19:30", start + 1), "ticket past 1ms after start");
+  assert(!isTicketPast("05/08/2026 - 19:30", start), "ticket not past at exact start");
+}
+
 function parseTicketOcrText(text) {
   const raw = String(text || "").replace(/\r/g, "\n");
   const normalized = raw.replace(/[|]/g, " ").replace(/[^\S\n]+/g, " ").trim();

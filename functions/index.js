@@ -9,6 +9,7 @@ const booking = require("./booking");
 const carteleraAlert = require("./carteleraAlert");
 const { parseValidationResult, fetchValidationBody } = require("./validation");
 const codePurge = require("./codePurge");
+const ticketPurge = require("./ticketPurge");
 const { formatSeatsText } = require("./seatsFormat");
 
 initializeApp();
@@ -400,6 +401,19 @@ exports.purgeDeadCodesDaily = onSchedule(
   async () => {
     const result = await codePurge.runGlobalDeadCodePurge();
     console.log("purgeDeadCodesDaily", result);
+  },
+);
+
+exports.purgePastTicketsDaily = onSchedule(
+  {
+    schedule: "0 8 * * *",
+    timeZone: "Europe/Madrid",
+    timeoutSeconds: 540,
+    memory: "256MiB",
+  },
+  async () => {
+    const result = await ticketPurge.runGlobalPastTicketPurge();
+    console.log("purgePastTicketsDaily", result);
   },
 );
 
