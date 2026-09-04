@@ -196,6 +196,21 @@ async function clearRemoteGiftFlag(entry) {
   });
 }
 
+async function clearRemoteTicketGiftFlag(ticket) {
+  const session = await getValidSession();
+  if (!session) return;
+
+  const docId = ticketDocId(ticket.accessCode);
+  await firestoreFetch(
+    `/users/${session.uid}/tickets/${docId}?updateMask.fieldPaths=isNewGift`,
+    {
+      method: "PATCH",
+      session,
+      body: { fields: {} },
+    },
+  );
+}
+
 async function callCallable(name, data) {
   const session = await getValidSession();
   if (!session) throw new Error("unauthenticated");
@@ -223,6 +238,23 @@ async function transferCodeRemote(code, toUsername) {
     code: String(code).trim(),
     toUsername: String(toUsername).trim(),
   });
+}
+
+async function transferTicketRemote(accessCode, toUsername) {
+  return callCallable("transferTicket", {
+    accessCode: String(accessCode).trim(),
+    toUsername: String(toUsername).trim(),
+  });
+}
+
+async function deleteTicketRemote(accessCode) {
+  return callCallable("deleteTicket", {
+    accessCode: String(accessCode).trim(),
+  });
+}
+
+async function deleteRemoteTicket(accessCode) {
+  return deleteTicketRemote(accessCode);
 }
 
 async function deleteRemoteCode(code) {
@@ -258,7 +290,7 @@ function ticketDocId(accessCode) {
 }
 
 function ticketToFields(ticket) {
-  return {
+  const fields = {
     accessCode: { stringValue: ticket.accessCode },
     referencia: { stringValue: ticket.referencia || "" },
     title: { stringValue: ticket.title || "" },
@@ -268,7 +300,12 @@ function ticketToFields(ticket) {
     qrDataUrl: { stringValue: ticket.qrDataUrl || "" },
     barcodeDataUrl: { stringValue: ticket.barcodeDataUrl || "" },
     savedAt: { stringValue: ticket.savedAt || "" },
+    shareCount: { integerValue: String(Number(ticket.shareCount) || 0) },
   };
+  if (ticket.isSharedCopy) fields.isSharedCopy = { booleanValue: true };
+  if (ticket.isNewGift) fields.isNewGift = { booleanValue: true };
+  if (ticket.giftedFrom) fields.giftedFrom = { stringValue: ticket.giftedFrom };
+  return fields;
 }
 
 function fieldsToTicket(fields) {
@@ -283,6 +320,10 @@ function fieldsToTicket(fields) {
     qrDataUrl: fields.qrDataUrl?.stringValue || "",
     barcodeDataUrl: fields.barcodeDataUrl?.stringValue || "",
     savedAt: fields.savedAt?.stringValue || "",
+    shareCount: Number(fields.shareCount?.integerValue) || 0,
+    isSharedCopy: fields.isSharedCopy?.booleanValue === true,
+    isNewGift: fields.isNewGift?.booleanValue === true,
+    giftedFrom: fields.giftedFrom?.stringValue || "",
   };
 }
 
@@ -307,17 +348,6 @@ async function upsertRemoteTicket(ticket) {
     method: "PATCH",
     session,
     body: { fields: ticketToFields(ticket) },
-  });
-}
-
-async function deleteRemoteTicket(accessCode) {
-  const session = await getValidSession();
-  if (!session) return;
-
-  const docId = ticketDocId(accessCode);
-  await firestoreFetch(`/users/${session.uid}/tickets/${docId}`, {
-    method: "DELETE",
-    session,
   });
 }
 

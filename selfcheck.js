@@ -285,7 +285,7 @@ assert(countSeatLines(seatSample) === 2, "seat line count");
 assert(showtimeToCreatedAt("17/06/2026 - 19:30 - Sala 3") === "2026-06-17", "showtime to createdAt");
 assert(showtimeToCreatedAt("") === "2026-08-05", "empty showtime → today");
 
-const { formatSeatsText } = require("./seatsFormat");
+const { formatSeatsText, countSeats } = require("./seatsFormat");
 assert(
   formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4") === "Fila 6 Butacas 6 y 4",
   "same row two seats",
@@ -310,6 +310,10 @@ assert(
   formatSeatsText("Fila 6 Butacas 6 y 4") === "Fila 6 Butacas 6 y 4",
   "already formatted idempotent",
 );
+assert(countSeats("Fila 6 Butacas 6 y 4") === 2, "countSeats two");
+assert(countSeats("Fila 9 Butaca 3") === 1, "countSeats one");
+assert(countSeats("") === 1, "countSeats empty fallback");
+assert(countSeats("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 9 Butaca 3") === 3, "countSeats three");
 
 function decodeHtml(s) {
   return String(s || "")

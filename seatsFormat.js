@@ -1,9 +1,8 @@
-/** Agrupa "Fila X Butaca Y; Fila X Butaca Z" → "Fila X Butacas Y y Z". */
-function formatSeatsText(raw) {
+/** Parse seat labels into Map(fila → unique butaca nums). */
+function collectSeatsByRow(raw) {
   const text = String(raw || "").trim();
-  if (!text) return "";
-
   const byRow = new Map();
+  if (!text) return byRow;
 
   function add(fila, butaca) {
     const f = String(fila);
@@ -42,6 +41,15 @@ function formatSeatsText(raw) {
     while ((m = re.exec(text))) add(m[1], m[2]);
   }
 
+  return byRow;
+}
+
+/** Agrupa "Fila X Butaca Y; Fila X Butaca Z" → "Fila X Butacas Y y Z". */
+function formatSeatsText(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return "";
+
+  const byRow = collectSeatsByRow(text);
   if (byRow.size === 0) return text;
 
   function joinNums(nums) {
@@ -58,6 +66,14 @@ function formatSeatsText(raw) {
     .join("; ");
 }
 
+/** Unique seat count; fallback 1 when unparseable / empty. */
+function countSeats(raw) {
+  const byRow = collectSeatsByRow(raw);
+  let n = 0;
+  for (const list of byRow.values()) n += list.length;
+  return n > 0 ? n : 1;
+}
+
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { formatSeatsText };
+  module.exports = { formatSeatsText, countSeats };
 }

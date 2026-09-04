@@ -52,9 +52,15 @@ const alertOverlayClose = document.getElementById("alert-overlay-close");
 const alertOverlayMessage = document.getElementById("alert-overlay-message");
 const alertOverlayOk = document.getElementById("alert-overlay-ok");
 let sendTargetCode = "";
+let sendTargetKind = "code";
 
 const SEND_USED_MSG = "El código a enviar ya ha sido usado. Se ha eliminado";
-const ticketOverlay = document.getElementById("ticket-overlay");
+
+function canSendTicket(ticket) {
+  if (ticket.isSharedCopy) return false;
+  const maxShares = Math.max(0, countSeats(ticket.seatsText) - 1);
+  return maxShares > 0 && (Number(ticket.shareCount) || 0) < maxShares;
+}const ticketOverlay = document.getElementById("ticket-overlay");
 const ticketOverlayClose = document.getElementById("ticket-overlay-close");
 const ticketOverlayTitle = document.getElementById("ticket-overlay-title");
 const ticketOverlayMeta = document.getElementById("ticket-overlay-meta");
@@ -140,9 +146,10 @@ function setSendError(text) {
   sendError.textContent = text;
 }
 
-function openSendOverlay(code) {
-  sendTargetCode = code;
-  sendOverlayCode.textContent = code;
+function openSendOverlay(id, kind = "code") {
+  sendTargetKind = kind;
+  sendTargetCode = id;
+  sendOverlayCode.textContent = id;
   sendEmail.value = "";
   setSendError("");
   sendSubmit.disabled = false;
@@ -154,6 +161,7 @@ function closeSendOverlay() {
   if (sendOverlay.hidden) return;
   sendOverlay.hidden = true;
   sendTargetCode = "";
+  sendTargetKind = "code";
   sendEmail.value = "";
   setSendError("");
 }
@@ -217,14 +225,33 @@ sendForm.addEventListener("submit", async (event) => {
   sendSubmit.disabled = true;
   setSendError("");
   try {
-    await transferCodeRemote(sendTargetCode, email);
-    const codes = await getCodes();
-    await saveCodes(codes.filter((item) => item.code.trim() !== sendTargetCode.trim()));
-    closeSendOverlay();
-    showListMessage("Código enviado.");
-    await renderList();
+    if (sendTargetKind === "ticket") {
+      const result = await transferTicketRemote(sendTargetCode, email);
+      const nextCount = Number(result?.shareCount) || 0;
+      const tickets = await getTickets();
+      await saveTickets(
+        tickets.map((t) =>
+          t.accessCode === sendTargetCode ? { ...t, shareCount: nextCount } : t,
+        ),
+      );
+      closeSendOverlay();
+      showTicketsMessage("Entrada enviada.");
+      await renderTickets();
+    } else {
+      await transferCodeRemote(sendTargetCode, email);
+      const codes = await getCodes();
+      await saveCodes(codes.filter((item) => item.code.trim() !== sendTargetCode.trim()));
+      closeSendOverlay();
+      showListMessage("Código enviado.");
+      await renderList();
+    }
   } catch (err) {
-    setSendError(err?.message || "No se pudo enviar el código.");
+    setSendError(
+      err?.message ||
+        (sendTargetKind === "ticket"
+          ? "No se pudo enviar la entrada."
+          : "No se pudo enviar el código."),
+    );
     sendSubmit.disabled = false;
   }
 });
@@ -577,6 +604,8 @@ function showTicketsMessage(text, type = "success") {
 }
 
 function createTicketCard(ticket) {
+  if (ticket.isNewGift) return createGiftCard(ticket, "ticket");
+
   const card = document.createElement("article");
   card.className = "card";
 
@@ -608,17 +637,33 @@ function createTicketCard(ticket) {
   fillBtn(viewBtn, "eye", "Ver");
   viewBtn.addEventListener("click", () => openTicketOverlay(ticket));
 
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "btn btn--danger btn--icon";
-  deleteBtn.title = "Eliminar entrada";
-  fillBtn(deleteBtn, "trash", "Eliminar");
-  deleteBtn.addEventListener("click", async () => {
-    await deleteTicketByAccessCode(ticket.accessCode);
-    await renderTickets();
-  });
+  actions.append(viewBtn);
 
-  actions.append(viewBtn, deleteBtn);
+  if (canSendTicket(ticket)) {
+    const sendBtn = document.createElement("button");
+    sendBtn.type = "button";
+    sendBtn.className = "btn btn--secondary btn--icon";
+    sendBtn.title = "Enviar entrada";
+    fillBtn(sendBtn, "send", "Enviar");
+    sendBtn.addEventListener("click", () => {
+      openSendOverlay(ticket.accessCode, "ticket");
+    });
+    actions.append(sendBtn);
+  }
+
+  if (!ticket.isSharedCopy) {
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn btn--danger btn--icon";
+    deleteBtn.title = "Eliminar entrada";
+    fillBtn(deleteBtn, "trash", "Eliminar");
+    deleteBtn.addEventListener("click", async () => {
+      await deleteTicketByAccessCode(ticket.accessCode);
+      await renderTickets();
+    });
+    actions.append(deleteBtn);
+  }
+
   card.append(header, meta, actions);
   return card;
 }
@@ -996,6 +1041,20 @@ async function unwrapGift(item) {
   await renderList();
 }
 
+async function unwrapTicketGift(ticket) {
+  const { isNewGift, ...rest } = ticket;
+  const tickets = await getTickets();
+  await saveTickets(
+    tickets.map((t) => (t.accessCode === ticket.accessCode ? rest : t)),
+  );
+  try {
+    await clearRemoteTicketGiftFlag(rest);
+  } catch {
+    /* local unwrap still applies */
+  }
+  await renderTickets();
+}
+
 const FILM_UNWRAP_MS = 2200;
 
 function playFilmUnwrap(card, onDone) {
@@ -1026,13 +1085,17 @@ function playFilmUnwrap(card, onDone) {
   setTimeout(onDone, FILM_UNWRAP_MS);
 }
 
-function createGiftCard(item) {
+function createGiftCard(item, kind = "code") {
+  const isTicket = kind === "ticket";
   const card = document.createElement("article");
   card.className = "card card--gift";
   card.tabIndex = 0;
   card.setAttribute("role", "button");
-  card.setAttribute("aria-label", "Código recibido. Toca para abrir");
-  card.title = "Toca para revelar el código";
+  card.setAttribute(
+    "aria-label",
+    isTicket ? "Entrada recibida. Toca para abrir" : "Código recibido. Toca para abrir",
+  );
+  card.title = isTicket ? "Toca para revelar la entrada" : "Toca para revelar el código";
 
   const strip = document.createElement("div");
   strip.className = "card__film-strip";
@@ -1047,7 +1110,9 @@ function createGiftCard(item) {
 
   const hint = document.createElement("p");
   hint.className = "card__gift-hint";
-  hint.innerHTML = "<span>¡Has recibido un código!</span><span>Toca para abrir</span>";
+  hint.innerHTML = isTicket
+    ? "<span>¡Has recibido una entrada!</span><span>Toca para abrir</span>"
+    : "<span>¡Has recibido un código!</span><span>Toca para abrir</span>";
   main.appendChild(hint);
   strip.append(left, main, right);
   card.appendChild(strip);
@@ -1056,7 +1121,7 @@ function createGiftCard(item) {
   const open = () => {
     if (busy) return;
     busy = true;
-    playFilmUnwrap(card, () => unwrapGift(item));
+    playFilmUnwrap(card, () => (isTicket ? unwrapTicketGift(item) : unwrapGift(item)));
   };
   card.addEventListener("click", open);
   card.addEventListener("keydown", (event) => {

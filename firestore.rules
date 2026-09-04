@@ -5,7 +5,12 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     match /users/{userId}/tickets/{ticketId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create, update: if request.auth != null && request.auth.uid == userId;
+      // Shared copies are removed only by the original owner's delete/purge (Admin).
+      allow delete: if request.auth != null
+        && request.auth.uid == userId
+        && resource.data.get("isSharedCopy", false) != true;
     }
     match /users/{userId}/prefs/{prefId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;

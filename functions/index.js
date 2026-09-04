@@ -12,7 +12,7 @@ const carteleraAlert = require("./carteleraAlert");
 const { parseValidationResult, fetchValidationBody } = require("./validation");
 const codePurge = require("./codePurge");
 const ticketPurge = require("./ticketPurge");
-const { formatSeatsText } = require("./seatsFormat");
+const { formatSeatsText, countSeats } = require("./seatsFormat");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
@@ -233,6 +233,147 @@ exports.transferCode = onCall(async (request) => {
   });
 
   return { ok: true, toEmail };
+});
+
+exports.transferTicket = onCall(async (request) => {
+  requireAuth(request);
+  const senderUid = request.auth.uid;
+  const accessCode = String(request.data?.accessCode || "").trim();
+  const senderEmail = String(request.auth.token?.email || "").trim().toLowerCase();
+  const rawUser = String(
+    request.data?.toUsername || request.data?.toEmail || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (!accessCode) throw new HttpsError("invalid-argument", "Falta la entrada.");
+  if (!rawUser) {
+    throw new HttpsError("invalid-argument", "Introduce un nombre de usuario.");
+  }
+
+  let toEmail;
+  if (rawUser.includes("@")) {
+    toEmail = rawUser;
+  } else {
+    const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+    if (!domain) {
+      throw new HttpsError("failed-precondition", "No se pudo resolver el destinatario.");
+    }
+    if (!/^[a-z0-9._%+-]+$/i.test(rawUser)) {
+      throw new HttpsError("invalid-argument", "Nombre de usuario no válido.");
+    }
+    toEmail = `${rawUser}@${domain}`;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    throw new HttpsError("invalid-argument", "Nombre de usuario no válido.");
+  }
+
+  const senderUser = senderEmail.includes("@") ? senderEmail.split("@")[0] : "";
+  const targetUser = toEmail.split("@")[0];
+  if (senderEmail && (senderEmail === toEmail || senderUser === targetUser)) {
+    throw new HttpsError("invalid-argument", "No puedes enviártelo a ti mismo.");
+  }
+
+  let recipient;
+  try {
+    recipient = await getAuth().getUserByEmail(toEmail);
+  } catch (err) {
+    if (err?.code === "auth/user-not-found") {
+      throw new HttpsError("not-found", "Ese usuario no existe");
+    }
+    console.error("transferTicket getUserByEmail", err);
+    throw new HttpsError("internal", "No se pudo comprobar el usuario.");
+  }
+
+  if (recipient.uid === senderUid) {
+    throw new HttpsError("invalid-argument", "No puedes enviártelo a ti mismo.");
+  }
+
+  const docId = codeDocId(accessCode);
+  const db = getFirestore();
+  const senderRef = db.doc(`users/${senderUid}/tickets/${docId}`);
+  const recipientRef = db.doc(`users/${recipient.uid}/tickets/${docId}`);
+
+  let nextShareCount = 0;
+  await db.runTransaction(async (tx) => {
+    const senderSnap = await tx.get(senderRef);
+    const recipientSnap = await tx.get(recipientRef);
+    if (!senderSnap.exists) {
+      throw new HttpsError("not-found", "No tienes esa entrada.");
+    }
+    const data = senderSnap.data() || {};
+    if (data.isSharedCopy) {
+      throw new HttpsError("permission-denied", "Solo el dueño original puede enviar esta entrada.");
+    }
+    if (recipientSnap.exists) {
+      throw new HttpsError("already-exists", "Ese usuario ya tiene esta entrada.");
+    }
+
+    const seats = countSeats(data.seatsText);
+    const maxShares = Math.max(0, seats - 1);
+    const shareCount = Number(data.shareCount) || 0;
+    if (maxShares < 1 || shareCount >= maxShares) {
+      throw new HttpsError("resource-exhausted", "Ya no puedes compartir más esta entrada.");
+    }
+
+    const payload = {
+      accessCode: data.accessCode || accessCode,
+      referencia: data.referencia || "",
+      title: data.title || "",
+      showtime: data.showtime || "",
+      cinema: data.cinema || "",
+      seatsText: data.seatsText || "",
+      qrDataUrl: data.qrDataUrl || "",
+      barcodeDataUrl: data.barcodeDataUrl || "",
+      savedAt: data.savedAt || "",
+      isSharedCopy: true,
+      isNewGift: true,
+      giftedFrom: senderEmail || senderUid,
+    };
+
+    nextShareCount = shareCount + 1;
+    tx.set(recipientRef, payload);
+    tx.update(senderRef, { shareCount: nextShareCount });
+  });
+
+  return { ok: true, toEmail, shareCount: nextShareCount };
+});
+
+/** Owner deletes ticket + all shared copies (same accessCode). Copies cannot self-delete. */
+exports.deleteTicket = onCall(async (request) => {
+  requireAuth(request);
+  const uid = request.auth.uid;
+  const accessCode = String(request.data?.accessCode || "").trim();
+  if (!accessCode) throw new HttpsError("invalid-argument", "Falta la entrada.");
+
+  const docId = codeDocId(accessCode);
+  const db = getFirestore();
+  const ownerRef = db.doc(`users/${uid}/tickets/${docId}`);
+  const ownerSnap = await ownerRef.get();
+  if (!ownerSnap.exists) {
+    throw new HttpsError("not-found", "No tienes esa entrada.");
+  }
+  if (ownerSnap.data()?.isSharedCopy) {
+    throw new HttpsError("permission-denied", "No puedes borrar una entrada compartida.");
+  }
+
+  const group = await db
+    .collectionGroup("tickets")
+    .where("accessCode", "==", accessCode)
+    .get();
+
+  const refs = new Map();
+  refs.set(ownerRef.path, ownerRef);
+  for (const docSnap of group.docs) {
+    refs.set(docSnap.ref.path, docSnap.ref);
+  }
+
+  const batch = db.batch();
+  for (const ref of refs.values()) batch.delete(ref);
+  await batch.commit();
+
+  return { ok: true, deleted: refs.size };
 });
 
 function parseYmd(value) {

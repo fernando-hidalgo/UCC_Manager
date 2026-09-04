@@ -79,6 +79,15 @@ export async function transferCodeRemote(code, toUsername) {
   return res.data;
 }
 
+export async function transferTicketRemote(accessCode, toUsername) {
+  const fn = httpsCallable(functions, "transferTicket");
+  const res = await fn({
+    accessCode: String(accessCode).trim(),
+    toUsername: String(toUsername).trim(),
+  });
+  return res.data;
+}
+
 export async function fetchEntradaRemote(referencia) {
   const fn = httpsCallable(functions, "fetchEntrada");
   const res = await fn({ referencia: String(referencia).trim() });
@@ -177,7 +186,7 @@ export async function pullTickets(uid) {
     .map((d) => {
       const data = d.data();
       if (!data?.accessCode) return null;
-      return {
+      const ticket = {
         accessCode: data.accessCode,
         referencia: data.referencia || "",
         title: data.title || "",
@@ -187,7 +196,12 @@ export async function pullTickets(uid) {
         qrDataUrl: data.qrDataUrl || "",
         barcodeDataUrl: data.barcodeDataUrl || "",
         savedAt: data.savedAt || "",
+        shareCount: Number(data.shareCount) || 0,
       };
+      if (data.isSharedCopy) ticket.isSharedCopy = true;
+      if (data.isNewGift) ticket.isNewGift = true;
+      if (data.giftedFrom) ticket.giftedFrom = data.giftedFrom;
+      return ticket;
     })
     .filter(Boolean);
 }
@@ -203,12 +217,26 @@ export async function upsertTicket(uid, ticket) {
     qrDataUrl: ticket.qrDataUrl || "",
     barcodeDataUrl: ticket.barcodeDataUrl || "",
     savedAt: ticket.savedAt || "",
+    shareCount: Number(ticket.shareCount) || 0,
   };
+  if (ticket.isSharedCopy) payload.isSharedCopy = true;
+  if (ticket.isNewGift) payload.isNewGift = true;
+  if (ticket.giftedFrom) payload.giftedFrom = ticket.giftedFrom;
   await setDoc(doc(ticketsCol(uid), codeDocId(ticket.accessCode)), payload);
 }
 
-export async function deleteTicketRemote(uid, accessCode) {
-  await deleteDoc(doc(ticketsCol(uid), codeDocId(accessCode)));
+/** Clear gift wrap flag after the recipient opens a shared ticket. */
+export async function clearTicketGiftFlag(uid, ticket) {
+  const { isNewGift, ...rest } = ticket;
+  const next = { ...rest };
+  await upsertTicket(uid, next);
+  return next;
+}
+
+export async function deleteTicketRemote(_uid, accessCode) {
+  const fn = httpsCallable(functions, "deleteTicket");
+  const res = await fn({ accessCode: String(accessCode).trim() });
+  return res.data;
 }
 
 export function mergeRemoteTickets(local, remote) {
