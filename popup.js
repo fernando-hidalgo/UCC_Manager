@@ -1110,10 +1110,11 @@ function createGiftCard(item, kind = "code") {
 
   const hint = document.createElement("p");
   hint.className = "card__gift-hint";
-  hint.innerHTML = isTicket
-    ? "<span>¡Has recibido una entrada!</span><span>Toca para abrir</span>"
-    : "<span>¡Has recibido un código!</span><span>Toca para abrir</span>";
-  main.appendChild(hint);
+  const line1 = document.createElement("span");
+  line1.textContent = isTicket ? "¡Has recibido una entrada!" : "¡Has recibido un código!";
+  const line2 = document.createElement("span");
+  line2.textContent = "Toca para abrir";
+  hint.append(line1, line2);  main.appendChild(hint);
   strip.append(left, main, right);
   card.appendChild(strip);
 
