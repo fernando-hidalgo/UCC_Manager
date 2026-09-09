@@ -392,13 +392,27 @@ function addDaysYmd(ymd, days) {
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
 }
 
+/** Referencia from labeled field, spaced barcode HRI, or bare 10–14 digit run. */
+function extractReferencia(flat) {
+  const labeled = (flat.match(/Referencia\s*[:.]?\s*(\d{10,14})/i) || [])[1];
+  if (labeled) return labeled;
+
+  // HRI under barcode, e.g. "0 080025 687561" → 0080025687561 (spaces only, not newlines)
+  const spaced = flat.match(/\b\d+(?:[ ]+\d+)+\b/g) || [];
+  for (const cand of spaced) {
+    const digits = cand.replace(/\D/g, "");
+    if (/^\d{10,14}$/.test(digits)) return digits;
+  }
+
+  return (flat.match(/\b(\d{10,14})\b/) || [])[1] || "";
+}
+
 /** Parse discount-code ticket OCR text → fields. */
 function parseDiscountTicketText(ocrText) {
   const text = String(ocrText || "").replace(/\r/g, "\n");
   const flat = text.replace(/[ \t]+/g, " ");
 
-  const referencia =
-    (flat.match(/Referencia\s*[:.]?\s*(\d{10,14})/i) || [])[1] || "";
+  const referencia = extractReferencia(flat);
 
   const seats =
     (flat.match(/N\s*[ºo°.]?\s*Butacas?\s*[:.]?\s*(\d{1,2})/i) ||
@@ -652,28 +666,36 @@ exports.purgePastTicketsDaily = onSchedule(
   },
 );
 
+const watchCarteleraOpts = {
+  timeZone: "Europe/Madrid",
+  secrets: [gmailUser, gmailAppPassword, unsubSecret],
+  timeoutSeconds: 300,
+  memory: "256MiB",
+};
+
+async function runWatchCarteleraMetromar() {
+  const result = await carteleraAlert.runCarteleraAlert({
+    gmailUser: gmailUser.value(),
+    gmailPass: gmailAppPassword.value(),
+    unsubSecret: unsubSecret.value(),
+    unsubBaseUrl: carteleraUnsubBaseUrl(),
+  });
+  console.log("watchCarteleraMetromar", {
+    seeded: result.seeded,
+    newCount: result.newCount,
+    mailed: result.mailed,
+    notified: result.notified.map((f) => f.title),
+  });
+}
+
 exports.watchCarteleraMetromar = onSchedule(
-  {
-    schedule: "0 10,18 * * *",
-    timeZone: "Europe/Madrid",
-    secrets: [gmailUser, gmailAppPassword, unsubSecret],
-    timeoutSeconds: 300,
-    memory: "256MiB",
-  },
-  async () => {
-    const result = await carteleraAlert.runCarteleraAlert({
-      gmailUser: gmailUser.value(),
-      gmailPass: gmailAppPassword.value(),
-      unsubSecret: unsubSecret.value(),
-      unsubBaseUrl: carteleraUnsubBaseUrl(),
-    });
-    console.log("watchCarteleraMetromar", {
-      seeded: result.seeded,
-      newCount: result.newCount,
-      mailed: result.mailed,
-      notified: result.notified.map((f) => f.title),
-    });
-  },
+  { ...watchCarteleraOpts, schedule: "0 10,18 * * *" },
+  runWatchCarteleraMetromar,
+);
+
+exports.watchCarteleraMetromarMidday = onSchedule(
+  { ...watchCarteleraOpts, schedule: "30 14 * * *" },
+  runWatchCarteleraMetromar,
 );
 
 exports.unsubscribeCartelera = onRequest(

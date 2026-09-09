@@ -227,12 +227,21 @@ assert(
   assert(!isTicketPast("05/08/2026 - 19:30", start), "ticket not past at exact start");
 }
 
+function extractReferencia(flat) {
+  const labeled = (flat.match(/Referencia\s*[:.]?\s*(\d{10,14})/i) || [])[1];
+  if (labeled) return labeled;
+  const spaced = flat.match(/\b\d+(?:[ ]+\d+)+\b/g) || [];
+  for (const cand of spaced) {
+    const digits = cand.replace(/\D/g, "");
+    if (/^\d{10,14}$/.test(digits)) return digits;
+  }
+  return (flat.match(/\b(\d{10,14})\b/) || [])[1] || "";
+}
+
 function parseTicketOcrText(text) {
   const raw = String(text || "").replace(/\r/g, "\n");
   const normalized = raw.replace(/[|]/g, " ").replace(/[^\S\n]+/g, " ").trim();
-  const refMatch =
-    normalized.match(/Referencia\s*:?\s*(\d{10,14})/i) ||
-    normalized.match(/\b(\d{12})\b/);
+  const refClean = String(extractReferencia(normalized)).replace(/\D/g, "");
   const seatsMatch =
     normalized.match(/N\.?\s*butacas\s*:?\s*(\d{1,2})\b/i) ||
     normalized.match(/butacas\s*:?\s*(\d{1,2})\b/i);
@@ -244,7 +253,7 @@ function parseTicketOcrText(text) {
     createdAt = `${fechaLine[3]}-${fechaLine[2].padStart(2, "0")}-${fechaLine[1].padStart(2, "0")}`;
   }
   return {
-    referencia: refMatch ? refMatch[1] : "",
+    referencia: /^\d{10,14}$/.test(refClean) ? refClean : "",
     seats: seatsMatch ? seatsMatch[1] : "",
     createdAt,
   };
@@ -264,6 +273,21 @@ assert(ocr.referencia === "212867179805", "ocr referencia");
 assert(ocr.seats === "2", "ocr seats");
 assert(ocr.createdAt === "2026-07-07", "ocr fecha not Valido hasta");
 assert(parseTicketOcrText("").referencia === "", "ocr empty");
+
+const sampleBarcodeOcr = `
+Metromar Cinemas 12
+Fecha: 04/09/2026
+Valido hasta: 03/11/2026
+N. butacas: 1
+VUELVE X6
+0 080025 687561
+Usuario: YOLANDA TAQ
+©14IN PUBLICIDAD Tel. 914 263 880
+`;
+const ocrBarcode = parseTicketOcrText(sampleBarcodeOcr);
+assert(ocrBarcode.referencia === "0080025687561", "ocr barcode HRI referencia");
+assert(ocrBarcode.seats === "1", "ocr barcode seats");
+assert(ocrBarcode.createdAt === "2026-09-04", "ocr barcode fecha");
 
 function countSeatLines(text) {
   return String(text || "")

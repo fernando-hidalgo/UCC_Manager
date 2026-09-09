@@ -74,6 +74,7 @@ const ticketList = document.getElementById("ticket-list");
 const emptyTickets = document.getElementById("empty-tickets");
 const ticketsMessage = document.getElementById("tickets-message");
 const sortButtons = document.querySelectorAll("#panel-list .sort-toggle__btn[data-sort]");
+const refreshCodesBtn = document.getElementById("refresh-codes-btn");
 const ticketSortBtn = document.getElementById("ticket-sort-btn");
 const listMessage = document.getElementById("list-message");
 const formMessage = document.getElementById("form-message");
@@ -270,6 +271,20 @@ function showListMessage(text, type = "success") {
   setTimeout(() => {
     listMessage.hidden = true;
   }, 3000);
+}
+
+let refreshOkTimer = 0;
+function flashRefreshOk(btn) {
+  if (!btn) return;
+  clearTimeout(refreshOkTimer);
+  btn.classList.add("toolbar-btn--ok");
+  btn.title = "Códigos actualizados";
+  btn.setAttribute("aria-label", "Códigos actualizados");
+  refreshOkTimer = setTimeout(() => {
+    btn.classList.remove("toolbar-btn--ok");
+    btn.title = "Actualizar códigos";
+    btn.setAttribute("aria-label", "Actualizar códigos");
+  }, 2000);
 }
 
 function showTicketsMessage(text, type = "success") {
@@ -2203,6 +2218,21 @@ sortButtons.forEach((btn) => {
     updateSortButtons();
     renderList();
   });
+});
+
+refreshCodesBtn?.addEventListener("click", async () => {
+  if (!user || refreshCodesBtn.disabled) return;
+  refreshCodesBtn.disabled = true;
+  refreshCodesBtn.classList.remove("toolbar-btn--ok");
+  try {
+    await syncFromCloud();
+    flashRefreshOk(refreshCodesBtn);
+  } catch (err) {
+    console.error(err);
+    showListMessage("No se pudo actualizar.", "error");
+  } finally {
+    refreshCodesBtn.disabled = false;
+  }
 });
 
 ticketSortBtn?.addEventListener("click", () => {

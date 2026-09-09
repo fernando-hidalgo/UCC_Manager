@@ -374,6 +374,38 @@ body:has(#view-app:not([hidden])) {
   background: var(--color-primary-soft);
 }
 
+.toolbar-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.toolbar-btn--refresh {
+  margin-left: auto;
+}
+
+.toolbar-btn .toolbar-btn__icon--ok {
+  display: none;
+}
+
+.toolbar-btn--ok {
+  color: var(--color-success);
+  border-color: var(--color-success);
+  background: #ecfdf5;
+}
+
+.toolbar-btn--ok .toolbar-btn__icon--refresh {
+  display: none;
+}
+
+.toolbar-btn--ok .toolbar-btn__icon--ok {
+  display: block;
+}
+
+.toolbar-btn--ok:hover:not(:disabled) {
+  color: var(--color-success);
+  background: #ecfdf5;
+}
+
 .toolbar-btn--text {
   width: auto;
   padding: 0 8px;
