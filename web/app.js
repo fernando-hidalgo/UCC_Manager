@@ -104,8 +104,10 @@ const SEND_USED_MSG = "El código a enviar ya ha sido usado. Se ha eliminado";
 
 function canSendTicket(ticket) {
   if (ticket.isSharedCopy) return false;
-  const maxShares = Math.max(0, countSeats(ticket.seatsText) - 1);
-  return maxShares > 0 && (Number(ticket.shareCount) || 0) < maxShares;
+  const seats = countSeats(ticket.seatsText);
+  if (seats <= 1) return true;
+  const maxShares = Math.max(0, seats - 1);
+  return (Number(ticket.shareCount) || 0) < maxShares;
 }
 let user = null;
 let codes = [];
@@ -2365,12 +2367,16 @@ sendForm.addEventListener("submit", async (event) => {
   try {
     if (sendTargetKind === "ticket") {
       const result = await transferTicketRemote(sendTargetCode, email);
-      const nextCount = Number(result?.shareCount) || 0;
-      saveTicketsCache(
-        tickets.map((t) =>
-          t.accessCode === sendTargetCode ? { ...t, shareCount: nextCount } : t,
-        ),
-      );
+      if (result?.transferred) {
+        saveTicketsCache(tickets.filter((t) => t.accessCode !== sendTargetCode));
+      } else {
+        const nextCount = Number(result?.shareCount) || 0;
+        saveTicketsCache(
+          tickets.map((t) =>
+            t.accessCode === sendTargetCode ? { ...t, shareCount: nextCount } : t,
+          ),
+        );
+      }
       closeSendOverlay();
       showTicketsMessage("Entrada enviada.");
       renderTickets();

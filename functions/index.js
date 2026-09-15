@@ -296,6 +296,7 @@ exports.transferTicket = onCall(async (request) => {
   const recipientRef = db.doc(`users/${recipient.uid}/tickets/${docId}`);
 
   let nextShareCount = 0;
+  let transferred = false;
   await db.runTransaction(async (tx) => {
     const senderSnap = await tx.get(senderRef);
     const recipientSnap = await tx.get(recipientRef);
@@ -311,13 +312,7 @@ exports.transferTicket = onCall(async (request) => {
     }
 
     const seats = countSeats(data.seatsText);
-    const maxShares = Math.max(0, seats - 1);
-    const shareCount = Number(data.shareCount) || 0;
-    if (maxShares < 1 || shareCount >= maxShares) {
-      throw new HttpsError("resource-exhausted", "Ya no puedes compartir más esta entrada.");
-    }
-
-    const payload = {
+    const base = {
       accessCode: data.accessCode || accessCode,
       referencia: data.referencia || "",
       title: data.title || "",
@@ -327,16 +322,29 @@ exports.transferTicket = onCall(async (request) => {
       qrDataUrl: data.qrDataUrl || "",
       barcodeDataUrl: data.barcodeDataUrl || "",
       savedAt: data.savedAt || "",
-      isSharedCopy: true,
       isNewGift: true,
       giftedFrom: senderEmail || senderUid,
     };
 
+    if (seats <= 1) {
+      transferred = true;
+      tx.set(recipientRef, { ...base, shareCount: 0 });
+      tx.delete(senderRef);
+      return;
+    }
+
+    const maxShares = Math.max(0, seats - 1);
+    const shareCount = Number(data.shareCount) || 0;
+    if (maxShares < 1 || shareCount >= maxShares) {
+      throw new HttpsError("resource-exhausted", "Ya no puedes compartir más esta entrada.");
+    }
+
     nextShareCount = shareCount + 1;
-    tx.set(recipientRef, payload);
+    tx.set(recipientRef, { ...base, isSharedCopy: true });
     tx.update(senderRef, { shareCount: nextShareCount });
   });
 
+  if (transferred) return { ok: true, toEmail, transferred: true };
   return { ok: true, toEmail, shareCount: nextShareCount };
 });
 

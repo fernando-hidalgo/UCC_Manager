@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "UCC Manager",
-  "version": "1.5.2",
+  "version": "1.5.4",
   "description": "Agenda de códigos de descuento y entradas para Unión Cine Ciudad (Metromar)",
   "browser_specific_settings": {
     "gecko": {
@@ -42,6 +42,11 @@
       "matches": ["https://www.compraentradas.com/Entrada/*"],
       "js": ["seatsFormat.js", "content.js"],
       "css": ["content.css"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.compraentradas.com/Cine/*"],
+      "js": ["carteleraContent.js"],
       "run_at": "document_idle"
     }
   ],
