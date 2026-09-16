@@ -1,6 +1,6 @@
 /**
  * Hide films on CompraEntradas /Cine/* to match getCartelera filters.
- * Rules mirrored from functions/booking.js (hasGenreValue, isHiddenFilm, Género tableCell).
+ * Rules mirrored from functions/booking.js (isHiddenFilm).
  */
 (function () {
   const ALLOWED = new Set(["10", "48"]);
@@ -10,28 +10,9 @@
   const cineId = pathMatch[1];
   const cineSlug = pathMatch[2];
 
-  function hasGenreValue(genre) {
-    return Boolean(String(genre ?? "").trim());
-  }
-
   function isHiddenFilm(film) {
     const blob = `${film?.title || ""} ${film?.slug || ""}`;
-    return /opera/i.test(blob) || /sesi[oó]n\s*teta/i.test(blob);
-  }
-
-  function decodeHtml(s) {
-    return String(s || "")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/&lt;/g, "<")
-      .replace(/&gt;/g, ">")
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
-  }
-
-  function parseGenre(html) {
-    const re = /<tr[^>]*>[\s\S]*?(?:G[eé]nero)[\s\S]*?<td[^>]*>\s*([^<]*)/i;
-    return decodeHtml((html.match(re) || [])[1] || "").trim();
+    return /opera/i.test(blob) || /sesi[oó]n\s*teta/i.test(blob) || /\bucc\b/i.test(blob);
   }
 
   function hide(el) {
@@ -73,40 +54,13 @@
     hideSessionsBySlug(filmSlug);
   }
 
-  async function filter() {
-    const cards = [];
-    const seen = new Set();
-
-    for (const a of document.querySelectorAll(`a[href*="/PeliculaCine/${cineId}/"]`)) {
-      const parsed = parsePeliculaHref(a.getAttribute("href") || "");
-      if (!parsed) continue;
-      const col = a.closest("[class*='col-']");
-      const title = cardTitle(a);
-      const film = { title, slug: parsed.slug };
-
-      if (isHiddenFilm(film)) {
-        hideFilm(parsed.slug, col);
-        continue;
-      }
-
-      if (seen.has(parsed.filmId)) continue;
-      seen.add(parsed.filmId);
-      cards.push({ ...parsed, title, col });
+  for (const a of document.querySelectorAll(`a[href*="/PeliculaCine/${cineId}/"]`)) {
+    const parsed = parsePeliculaHref(a.getAttribute("href") || "");
+    if (!parsed) continue;
+    const col = a.closest("[class*='col-']");
+    const title = cardTitle(a);
+    if (isHiddenFilm({ title, slug: parsed.slug })) {
+      hideFilm(parsed.slug, col);
     }
-
-    await Promise.all(
-      cards.map(async (card) => {
-        try {
-          const res = await fetch(card.href, { credentials: "same-origin" });
-          if (!res.ok) return;
-          const html = await res.text();
-          if (!hasGenreValue(parseGenre(html))) hideFilm(card.slug, card.col);
-        } catch {
-          /* fail-open: keep visible */
-        }
-      }),
-    );
   }
-
-  filter();
 })();

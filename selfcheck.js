@@ -374,7 +374,6 @@ function parseSesionHtml(html) {
 const {
   CINES,
   resolveCine,
-  hasGenreValue,
   parseCarteleraHtml,
   parsePeliculaHtml,
   parseHorariosHtml,
@@ -439,9 +438,6 @@ const peliculaNoGenre = parsePeliculaHtml(
   metromar,
 );
 assert(peliculaNoGenre.genre === "", "pelicula empty genre");
-assert(!hasGenreValue(peliculaNoGenre.genre), "hasGenreValue empty");
-assert(hasGenreValue("Acción"), "hasGenreValue present");
-assert(!hasGenreValue("   "), "hasGenreValue whitespace");
 
 const horariosSample = `
 <span class="badge">DIGT</span>
@@ -569,6 +565,11 @@ assert(!isOpera({ title: "SPIDER-MAN: BRAND NEW DAY", slug: "spider-man" }), "sp
 assert(isOpera({ title: "MARSUPILAMI (SESION TETA)", slug: "marsupilami-sesion-teta" }), "sesion teta");
 assert(isOpera({ title: "MARSUPILAMI (Sesión Teta)", slug: "x" }), "sesion teta accent");
 assert(!isOpera({ title: "MARSUPILAMI", slug: "marsupilami" }), "marsupilami ok");
+assert(
+  isOpera({ title: "CONCIERTO FIN DE AÑO UCC 2026", slug: "concierto-fin-de-ano-ucc-2026" }),
+  "ucc title",
+);
+assert(!isOpera({ title: "COYOTE VS ACME", slug: "coyote-vs-acme" }), "no ucc");
 
 const prev = ["1", "2"];
 const cur = [
