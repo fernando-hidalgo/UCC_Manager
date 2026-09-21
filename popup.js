@@ -43,6 +43,7 @@ const barcodeOverlaySvg = document.getElementById("barcode-overlay-svg");
 const barcodeOverlayClose = document.getElementById("barcode-overlay-close");
 const sendOverlay = document.getElementById("send-overlay");
 const sendOverlayClose = document.getElementById("send-overlay-close");
+const sendOverlayTitle = document.getElementById("send-overlay-title");
 const sendOverlayCode = document.getElementById("send-overlay-code");
 const sendForm = document.getElementById("send-form");
 const sendEmail = document.getElementById("send-username");
@@ -58,12 +59,9 @@ let sendTargetKind = "code";
 const SEND_USED_MSG = "El código a enviar ya ha sido usado. Se ha eliminado";
 
 function canSendTicket(ticket) {
-  if (ticket.isSharedCopy) return false;
-  const seats = countSeats(ticket.seatsText);
-  if (seats <= 1) return true;
-  const maxShares = Math.max(0, seats - 1);
-  return (Number(ticket.shareCount) || 0) < maxShares;
-}const ticketOverlay = document.getElementById("ticket-overlay");
+  return !ticket.isSharedCopy;
+}
+const ticketOverlay = document.getElementById("ticket-overlay");
 const ticketOverlayClose = document.getElementById("ticket-overlay-close");
 const ticketOverlayTitle = document.getElementById("ticket-overlay-title");
 const ticketOverlayMeta = document.getElementById("ticket-overlay-meta");
@@ -149,10 +147,18 @@ function setSendError(text) {
   sendError.textContent = text;
 }
 
-function openSendOverlay(id, kind = "code") {
+async function openSendOverlay(id, kind = "code") {
   sendTargetKind = kind;
   sendTargetCode = id;
-  sendOverlayCode.textContent = id;
+  if (kind === "ticket") {
+    sendOverlayTitle.textContent = "Enviar entrada";
+    const list = await getTickets();
+    const ticket = list.find((t) => t.accessCode === id);
+    sendOverlayCode.textContent = ticket?.title || "Entrada";
+  } else {
+    sendOverlayTitle.textContent = "Enviar código";
+    sendOverlayCode.textContent = id;
+  }
   sendEmail.value = "";
   setSendError("");
   sendSubmit.disabled = false;
@@ -658,18 +664,16 @@ function createTicketCard(ticket) {
     actions.append(sendBtn);
   }
 
-  if (!ticket.isSharedCopy) {
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.className = "btn btn--danger btn--icon";
-    deleteBtn.title = "Eliminar entrada";
-    fillBtn(deleteBtn, "trash", "Eliminar");
-    deleteBtn.addEventListener("click", async () => {
-      await deleteTicketByAccessCode(ticket.accessCode);
-      await renderTickets();
-    });
-    actions.append(deleteBtn);
-  }
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "btn btn--danger btn--icon";
+  deleteBtn.title = "Eliminar entrada";
+  fillBtn(deleteBtn, "trash", "Eliminar");
+  deleteBtn.addEventListener("click", async () => {
+    await deleteTicketByAccessCode(ticket.accessCode);
+    await renderTickets();
+  });
+  actions.append(deleteBtn);
 
   card.append(header, meta, actions);
   return card;
@@ -1064,6 +1068,80 @@ async function unwrapTicketGift(ticket) {
 
 const FILM_UNWRAP_MS = 2200;
 
+let projectorAudioCtx = null;
+
+function prefersReducedMotion() {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function playProjectorSound(durationMs = FILM_UNWRAP_MS) {
+  if (prefersReducedMotion()) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!projectorAudioCtx) projectorAudioCtx = new AC();
+    const ctx = projectorAudioCtx;
+
+    const start = () => {
+      const now = ctx.currentTime;
+      const dur = Math.max(0.4, durationMs / 1000);
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.0001, now);
+      master.gain.exponentialRampToValueAtTime(0.22, now + 0.08);
+      master.gain.setValueAtTime(0.22, now + dur * 0.75);
+      master.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+      master.connect(ctx.destination);
+
+      const noiseLen = Math.ceil(ctx.sampleRate * dur);
+      const noiseBuf = ctx.createBuffer(1, noiseLen, ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < noiseLen; i += 1) data[i] = Math.random() * 2 - 1;
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const band = ctx.createBiquadFilter();
+      band.type = "bandpass";
+      band.frequency.value = 420;
+      band.Q.value = 0.7;
+      const noiseGain = ctx.createGain();
+      noiseGain.gain.value = 0.55;
+      noise.connect(band);
+      band.connect(noiseGain);
+      noiseGain.connect(master);
+      noise.start(now);
+      noise.stop(now + dur);
+
+      const clickRate = 10;
+      const clickCount = Math.floor(dur * clickRate);
+      for (let i = 0; i < clickCount; i += 1) {
+        const t = now + i / clickRate;
+        const osc = ctx.createOscillator();
+        osc.type = "square";
+        osc.frequency.value = 1800 + (i % 3) * 120;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t);
+        g.gain.exponentialRampToValueAtTime(0.12, t + 0.004);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+        osc.connect(g);
+        g.connect(master);
+        osc.start(t);
+        osc.stop(t + 0.04);
+      }
+    };
+
+    if (ctx.state === "suspended") {
+      ctx.resume().then(start).catch(() => {});
+    } else {
+      start();
+    }
+  } catch {
+    /* animation continues without audio */
+  }
+}
+
 function playFilmUnwrap(card, onDone) {
   if (card.classList.contains("card--gift-running")) return;
   const strip = card.querySelector(".card__film-strip");
@@ -1071,6 +1149,7 @@ function playFilmUnwrap(card, onDone) {
     onDone();
     return;
   }
+  playProjectorSound(FILM_UNWRAP_MS);
   // Keep the wide cell; only clear its text so it can scroll off-screen.
   const main = strip.querySelector(".card__film-cell--main");
   if (main) main.replaceChildren();

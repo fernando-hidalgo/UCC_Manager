@@ -428,6 +428,7 @@ module.exports = {
   subjectDate,
   filterFilmsForSubscriber,
   buildMail,
+  createMailer,
   listSubscribers,
   setAlertEnabled,
   ensureAlertPref,

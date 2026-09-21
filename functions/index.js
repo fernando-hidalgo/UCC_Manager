@@ -9,10 +9,11 @@ const { getFirestore } = require("firebase-admin/firestore");
 const { GoogleAuth } = require("google-auth-library");
 const booking = require("./booking");
 const carteleraAlert = require("./carteleraAlert");
+const giftNotify = require("./giftNotify");
 const { parseValidationResult, fetchValidationBody } = require("./validation");
 const codePurge = require("./codePurge");
 const ticketPurge = require("./ticketPurge");
-const { formatSeatsText, countSeats } = require("./seatsFormat");
+const { formatSeatsText } = require("./seatsFormat");
 
 initializeApp();
 setGlobalOptions({ region: "us-central1", maxInstances: 10 });
@@ -147,7 +148,9 @@ exports.purgeDeadCodes = onCall(async (request) => {
   }
 });
 
-exports.transferCode = onCall(async (request) => {
+exports.transferCode = onCall(
+  { secrets: [gmailUser, gmailAppPassword] },
+  async (request) => {
   requireAuth(request);
   const senderUid = request.auth.uid;
   const code = String(request.data?.code || "").trim();
@@ -232,10 +235,25 @@ exports.transferCode = onCall(async (request) => {
     tx.delete(senderRef);
   });
 
-  return { ok: true, toEmail };
-});
+  try {
+    await giftNotify.sendGiftReceivedEmail({
+      toEmail,
+      senderEmail: senderEmail || senderUid,
+      kind: "code",
+      gmailUser: gmailUser.value(),
+      gmailPass: gmailAppPassword.value(),
+    });
+  } catch (err) {
+    console.error("transferCode gift email", err);
+  }
 
-exports.transferTicket = onCall(async (request) => {
+  return { ok: true, toEmail };
+  },
+);
+
+exports.transferTicket = onCall(
+  { secrets: [gmailUser, gmailAppPassword] },
+  async (request) => {
   requireAuth(request);
   const senderUid = request.auth.uid;
   const accessCode = String(request.data?.accessCode || "").trim();
@@ -296,7 +314,6 @@ exports.transferTicket = onCall(async (request) => {
   const recipientRef = db.doc(`users/${recipient.uid}/tickets/${docId}`);
 
   let nextShareCount = 0;
-  let transferred = false;
   await db.runTransaction(async (tx) => {
     const senderSnap = await tx.get(senderRef);
     const recipientSnap = await tx.get(recipientRef);
@@ -311,7 +328,6 @@ exports.transferTicket = onCall(async (request) => {
       throw new HttpsError("already-exists", "Ese usuario ya tiene esta entrada.");
     }
 
-    const seats = countSeats(data.seatsText);
     const base = {
       accessCode: data.accessCode || accessCode,
       referencia: data.referencia || "",
@@ -326,29 +342,28 @@ exports.transferTicket = onCall(async (request) => {
       giftedFrom: senderEmail || senderUid,
     };
 
-    if (seats <= 1) {
-      transferred = true;
-      tx.set(recipientRef, { ...base, shareCount: 0 });
-      tx.delete(senderRef);
-      return;
-    }
-
-    const maxShares = Math.max(0, seats - 1);
-    const shareCount = Number(data.shareCount) || 0;
-    if (maxShares < 1 || shareCount >= maxShares) {
-      throw new HttpsError("resource-exhausted", "Ya no puedes compartir más esta entrada.");
-    }
-
-    nextShareCount = shareCount + 1;
+    nextShareCount = (Number(data.shareCount) || 0) + 1;
     tx.set(recipientRef, { ...base, isSharedCopy: true });
     tx.update(senderRef, { shareCount: nextShareCount });
   });
 
-  if (transferred) return { ok: true, toEmail, transferred: true };
-  return { ok: true, toEmail, shareCount: nextShareCount };
-});
+  try {
+    await giftNotify.sendGiftReceivedEmail({
+      toEmail,
+      senderEmail: senderEmail || senderUid,
+      kind: "ticket",
+      gmailUser: gmailUser.value(),
+      gmailPass: gmailAppPassword.value(),
+    });
+  } catch (err) {
+    console.error("transferTicket gift email", err);
+  }
 
-/** Owner deletes ticket + all shared copies (same accessCode). Copies cannot self-delete. */
+  return { ok: true, toEmail, shareCount: nextShareCount };
+  },
+);
+
+/** Owner deletes ticket + all shared copies. Shared copy deletes only own doc. */
 exports.deleteTicket = onCall(async (request) => {
   requireAuth(request);
   const uid = request.auth.uid;
@@ -363,7 +378,8 @@ exports.deleteTicket = onCall(async (request) => {
     throw new HttpsError("not-found", "No tienes esa entrada.");
   }
   if (ownerSnap.data()?.isSharedCopy) {
-    throw new HttpsError("permission-denied", "No puedes borrar una entrada compartida.");
+    await ownerRef.delete();
+    return { ok: true, deleted: 1 };
   }
 
   const group = await db
