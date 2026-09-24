@@ -545,9 +545,11 @@ assert(refFromMerchantParams({ Ds_MerchantParameters: "no-base64-json" }) === ""
 
 const {
   isOpera,
+  filmNameKey,
   diffNewFilms,
   excludeNotifiedFilms,
   resolveNotifiedFilmIds,
+  resolveNotifiedFilmNames,
   unsubToken,
   verifyUnsubToken,
   filmUrl,
@@ -571,6 +573,13 @@ assert(
 );
 assert(!isOpera({ title: "COYOTE VS ACME", slug: "coyote-vs-acme" }), "no ucc");
 
+assert(
+  filmNameKey({ title: "EL FINAL DE OAK STREET", slug: "el-final-de-oak-street" }) === "elfinaldeoakstreet",
+  "filmNameKey strips spaces",
+);
+assert(filmNameKey({ title: "MARSUPILAMI", slug: "marsupilami" }) === "marsupilami", "filmNameKey lower");
+assert(filmNameKey({ slug: "Only-Slug" }) === "only-slug", "filmNameKey fallback slug");
+
 const prev = ["1", "2"];
 const cur = [
   { filmId: "1", title: "A", slug: "a" },
@@ -587,6 +596,22 @@ assert(excludeNotifiedFilms(notify, ["4"]).length === 0, "exclude already notifi
 assert(excludeNotifiedFilms(notify, ["99"]).length === 1, "exclude keeps unknown");
 const pipeline = excludeNotifiedFilms(diffNewFilms(cur, prev), ["3"]);
 assert(pipeline.length === 2 && pipeline.every((f) => f.filmId !== "3"), "diff+notified pipeline");
+
+const sameNameNewId = [
+  { filmId: "1", title: "A", slug: "a" },
+  { filmId: "99", title: "A", slug: "a-remake" },
+  { filmId: "4", title: "SPIDER", slug: "spider" },
+];
+assert(
+  diffNewFilms(sameNameNewId, ["1"], ["a"]).length === 1 &&
+    diffNewFilms(sameNameNewId, ["1"], ["a"])[0].filmId === "4",
+  "diff skips same name new id",
+);
+assert(
+  excludeNotifiedFilms([{ filmId: "99", title: "SPIDER", slug: "spider-2" }], ["4"], ["spider"]).length === 0,
+  "exclude by notified name",
+);
+
 assert(
   JSON.stringify(resolveNotifiedFilmIds({ filmIds: ["1", "2"] })) === JSON.stringify(["1", "2"]),
   "migrate notified from filmIds",
@@ -598,6 +623,19 @@ assert(
 assert(
   JSON.stringify(resolveNotifiedFilmIds({})) === JSON.stringify([]),
   "migrate empty meta",
+);
+assert(
+  JSON.stringify(resolveNotifiedFilmNames({ filmNames: ["a", "b"] })) === JSON.stringify(["a", "b"]),
+  "migrate notified from filmNames",
+);
+assert(
+  JSON.stringify(resolveNotifiedFilmNames({ filmNames: ["a"], notifiedFilmNames: ["z"] })) ===
+    JSON.stringify(["z"]),
+  "prefer notifiedFilmNames",
+);
+assert(
+  JSON.stringify(resolveNotifiedFilmNames({})) === JSON.stringify([]),
+  "migrate empty filmNames",
 );
 
 const secret = "test-unsub-secret";

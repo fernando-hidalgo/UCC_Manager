@@ -23,16 +23,37 @@ function metaRefFor(cineId) {
   return db().doc(`meta/cartelera-${cineId}`);
 }
 
-/** Films in current not in storedIds (by filmId). */
-function diffNewFilms(currentFilms, storedIds) {
-  const stored = new Set((storedIds || []).map(String));
-  return (currentFilms || []).filter((f) => f?.filmId && !stored.has(String(f.filmId)));
+/** Lowercase title/slug with spaces stripped — e.g. "EL FINAL DE OAK STREET" → "elfinaldeoakstreet". */
+function filmNameKey(film) {
+  return String(film?.title || film?.slug || "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
 }
 
-/** Drop films whose filmId was already emailed. */
-function excludeNotifiedFilms(films, notifiedIds) {
+/** Films in current not in storedIds/storedNames (by filmId OR name). */
+function diffNewFilms(currentFilms, storedIds, storedNames) {
+  const stored = new Set((storedIds || []).map(String));
+  const names = new Set((storedNames || []).map(String).filter(Boolean));
+  return (currentFilms || []).filter((f) => {
+    if (!f?.filmId) return false;
+    if (stored.has(String(f.filmId))) return false;
+    const key = filmNameKey(f);
+    if (key && names.has(key)) return false;
+    return true;
+  });
+}
+
+/** Drop films whose filmId OR name was already emailed. */
+function excludeNotifiedFilms(films, notifiedIds, notifiedNames) {
   const sent = new Set((notifiedIds || []).map(String));
-  return (films || []).filter((f) => f?.filmId && !sent.has(String(f.filmId)));
+  const names = new Set((notifiedNames || []).map(String).filter(Boolean));
+  return (films || []).filter((f) => {
+    if (!f?.filmId) return false;
+    if (sent.has(String(f.filmId))) return false;
+    const key = filmNameKey(f);
+    if (key && names.has(key)) return false;
+    return true;
+  });
 }
 
 /** Lazy migration: missing notifiedFilmIds → treat snapshot filmIds as already notified. */
@@ -40,6 +61,13 @@ function resolveNotifiedFilmIds(metaData) {
   const data = metaData || {};
   if (Array.isArray(data.notifiedFilmIds)) return data.notifiedFilmIds;
   return data.filmIds || [];
+}
+
+/** Lazy migration: missing notifiedFilmNames → treat snapshot filmNames as already notified. */
+function resolveNotifiedFilmNames(metaData) {
+  const data = metaData || {};
+  if (Array.isArray(data.notifiedFilmNames)) return data.notifiedFilmNames;
+  return data.filmNames || [];
 }
 
 function filmUrl(film, cine) {
@@ -285,11 +313,14 @@ async function processCineSnapshot(cineId) {
   const metaRef = metaRefFor(cineId);
   const metaSnap = await metaRef.get();
   const currentIds = tagged.map((f) => String(f.filmId));
+  const currentNames = tagged.map((f) => filmNameKey(f)).filter(Boolean);
 
   if (!metaSnap.exists) {
     await metaRef.set({
       filmIds: currentIds,
+      filmNames: currentNames,
       notifiedFilmIds: currentIds,
+      notifiedFilmNames: currentNames,
       updatedAt: FieldValue.serverTimestamp(),
     });
     return { seeded: true, brandNew: [], toNotify: [], currentIds, cine };
@@ -297,13 +328,22 @@ async function processCineSnapshot(cineId) {
 
   const metaData = metaSnap.data() || {};
   const storedIds = metaData.filmIds || [];
-  const brandNew = diffNewFilms(tagged, storedIds);
-  const toNotify = excludeNotifiedFilms(brandNew, resolveNotifiedFilmIds(metaData));
+  const storedNames = metaData.filmNames || [];
+  const brandNew = diffNewFilms(tagged, storedIds, storedNames);
+  const toNotify = excludeNotifiedFilms(
+    brandNew,
+    resolveNotifiedFilmIds(metaData),
+    resolveNotifiedFilmNames(metaData),
+  );
 
-  await metaRef.set({
-    filmIds: currentIds,
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  await metaRef.set(
+    {
+      filmIds: currentIds,
+      filmNames: currentNames,
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
 
   return { seeded: false, brandNew, toNotify, currentIds, cine };
 }
@@ -371,14 +411,16 @@ async function runCarteleraAlert({
     const byCine = new Map();
     for (const f of allNotify) {
       const id = String(f.cineId || "10");
-      if (!byCine.has(id)) byCine.set(id, []);
-      byCine.get(id).push(String(f.filmId));
+      if (!byCine.has(id)) byCine.set(id, { ids: [], names: [] });
+      const bucket = byCine.get(id);
+      bucket.ids.push(String(f.filmId));
+      const key = filmNameKey(f);
+      if (key) bucket.names.push(key);
     }
-    for (const [cineId, ids] of byCine) {
-      await metaRefFor(cineId).set(
-        { notifiedFilmIds: FieldValue.arrayUnion(...ids) },
-        { merge: true },
-      );
+    for (const [cineId, { ids, names }] of byCine) {
+      const patch = { notifiedFilmIds: FieldValue.arrayUnion(...ids) };
+      if (names.length) patch.notifiedFilmNames = FieldValue.arrayUnion(...names);
+      await metaRefFor(cineId).set(patch, { merge: true });
     }
   }
 
@@ -417,9 +459,11 @@ module.exports = {
   CINE_ID: "10",
   ALERT_CINE_IDS,
   isOpera,
+  filmNameKey,
   diffNewFilms,
   excludeNotifiedFilms,
   resolveNotifiedFilmIds,
+  resolveNotifiedFilmNames,
   filmUrl,
   unsubToken,
   verifyUnsubToken,
