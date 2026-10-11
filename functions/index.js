@@ -713,12 +713,7 @@ async function runWatchCarteleraMetromar() {
 }
 
 exports.watchCarteleraMetromar = onSchedule(
-  { ...watchCarteleraOpts, schedule: "0 10,18 * * *" },
-  runWatchCarteleraMetromar,
-);
-
-exports.watchCarteleraMetromarMidday = onSchedule(
-  { ...watchCarteleraOpts, schedule: "30 14 * * *" },
+  { ...watchCarteleraOpts, schedule: "0 14 * * *" },
   runWatchCarteleraMetromar,
 );
 

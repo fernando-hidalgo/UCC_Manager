@@ -78,10 +78,37 @@ async function ceFetch(pathOrUrl, { method = "GET", jar, body, headers = {} } = 
   return { res, text, jar: nextJar };
 }
 
-/** Hide from cartelera + alerts: óperas, “sesión teta”, and titles with UCC. */
+/** Hide from cartelera + alerts: óperas, “sesión teta”, TEA, UCC, conciertos (título/sinopsis). */
 function isHiddenFilm(film) {
-  const blob = `${film?.title || ""} ${film?.slug || ""}`;
-  return /opera/i.test(blob) || /sesi[oó]n\s*teta/i.test(blob) || /\bucc\b/i.test(blob);
+  const blob = `${film?.title || ""} ${film?.slug || ""} ${film?.synopsis || ""} ${film?.description || ""}`;
+  return (
+    /opera/i.test(blob) ||
+    /sesi[oó]n\s*teta/i.test(blob) ||
+    /\btea\b/i.test(blob) ||
+    /\bucc\b/i.test(blob) ||
+    /concierto/i.test(blob)
+  );
+}
+
+function extractSynopsis(html) {
+  return decodeHtml((String(html || "").match(/Sinopsis:<\/strong>\s*([^<]+)/i) || [])[1] || "").trim();
+}
+
+async function enrichFilmsWithSynopsis(films, cine) {
+  await Promise.all(
+    films.map(async (film) => {
+      try {
+        const { text, res } = await ceFetch(
+          `/PeliculaCine/${cine.id}/${cine.slug}/${film.filmId}/${film.slug}`,
+        );
+        if (!res.ok) return;
+        film.synopsis = extractSynopsis(text);
+      } catch (err) {
+        console.warn("enrichSynopsis", film.filmId, err?.message || err);
+      }
+    }),
+  );
+  return films;
 }
 
 /** @deprecated use isHiddenFilm */
@@ -105,16 +132,17 @@ function parseCarteleraHtml(html, cine) {
     const poster = absUrl(m[3] || m[6] || "");
     const title = decodeHtml(m[4] || m[5] || filmSlug).trim();
     if (!films.has(filmId)) {
-      films.set(filmId, { filmId, slug: filmSlug, title, poster, badge: "" });
+      films.set(filmId, { filmId, slug: filmSlug, title, poster, badge: "", hasVose: false });
     }
   }
   for (const film of films.values()) {
     const idx = html.indexOf(`/PeliculaCine/${id}/${slug}/${film.filmId}/`);
     if (idx < 0) continue;
     const chunk = html.slice(idx, idx + 800);
+    film.hasVose = /COMPRAR\s+(?:DIGITAL-)?VOS/i.test(chunk);
     const estreno = (chunk.match(/ESTRENO:\s*(\d{2}\/\d{2}\/\d{4})/i) || [])[1];
     if (estreno) film.badge = `Estreno ${estreno}`;
-    else if (/COMPRAR\s+DIGITAL/i.test(chunk)) film.badge = "En cartelera";
+    else if (/COMPRAR\s+(DIGITAL(?:-VOS)?|VOS)/i.test(chunk)) film.badge = "En cartelera";
   }
   return [...films.values()];
 }
@@ -140,9 +168,7 @@ function parsePeliculaHtml(html, filmId, slug, cine) {
   const director = tableCell(html, "Director");
   const rawDuration = tableCell(html, "Duraci[oó]n");
   const duration = formatDuration(rawDuration);
-  const synopsis = decodeHtml(
-    (html.match(/Sinopsis:<\/strong>\s*([^<]+)/i) || [])[1] || "",
-  ).trim();
+  const synopsis = extractSynopsis(html);
   const dates = [];
   const optRe = /<option[^>]*value=['"](\d{2}-\d{2}-\d{4})['"][^>]*>/gi;
   let om;
@@ -194,20 +220,32 @@ function parseHorariosHtml(html, cine) {
   const sessions = [];
   let currentFormat = "";
   const tokenRe = new RegExp(
-    String.raw`<span[^>]*class=['"][^'"]*badge[^'"]*['"][^>]*>\s*([^<]+?)\s*</span>|href=['"]/Sesion/${id}/${slug}/([^/'"]+)/(\d+)/(\d+)['"][^>]*>\s*(\d{1,2}:\d{2})\s*<`,
+    String.raw`<span[^>]*class=['"][^'"]*badge[^'"]*['"][^>]*>\s*([^<]+?)\s*</span>|` +
+      String.raw`href=['"]/Sesion/${id}/${slug}/([^/'"]+)/(\d+)/(\d+)['"][^>]*>\s*(\d{1,2}:\d{2})\s*<|` +
+      String.raw`<a[^>]*title=['"]No es posible la venta[^'"]*['"][^>]*>\s*(\d{1,2}:\d{2})\s*<`,
     "gi",
   );
   let m;
   while ((m = tokenRe.exec(html))) {
     if (m[1]) {
       currentFormat = decodeHtml(m[1]).trim();
-    } else {
+    } else if (m[5]) {
       sessions.push({
         slug: m[2],
         sessionId: m[3],
         plantaId: m[4],
         time: m[5],
         format: currentFormat,
+        bookable: true,
+      });
+    } else if (m[6]) {
+      sessions.push({
+        slug: "",
+        sessionId: "",
+        plantaId: "",
+        time: m[6],
+        format: currentFormat,
+        bookable: false,
       });
     }
   }
@@ -374,7 +412,9 @@ async function getCartelera({ cineId } = {}) {
   const cine = resolveCine(cineId);
   const { text, res } = await ceFetch(`/Cine/${cine.id}/${cine.slug}`);
   if (!res.ok) throw new HttpsError("unavailable", "No se pudo cargar la cartelera.");
-  const films = parseCarteleraHtml(text, cine).filter((f) => !isHiddenFilm(f));
+  const parsed = parseCarteleraHtml(text, cine);
+  await enrichFilmsWithSynopsis(parsed, cine);
+  const films = parsed.filter((f) => !isHiddenFilm(f));
   return { cine, films };
 }
 

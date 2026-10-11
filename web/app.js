@@ -1760,7 +1760,19 @@ function renderCarteleraGrid() {
         <div class="film-card__badge"></div>
       </div>`;
     btn.querySelector(".film-card__title").textContent = film.title;
-    btn.querySelector(".film-card__badge").textContent = film.badge || "";
+    const badgeEl = btn.querySelector(".film-card__badge");
+    if (film.badge) {
+      badgeEl.textContent = film.badge;
+      if (film.hasVose) {
+        badgeEl.append(" · ");
+        const vose = document.createElement("span");
+        vose.className = "film-card__vose";
+        vose.textContent = "VOSE";
+        badgeEl.appendChild(vose);
+      }
+    } else {
+      badgeEl.textContent = "";
+    }
     btn.addEventListener("click", () => openFilm(film));
     carteleraGrid.appendChild(btn);
   }
@@ -1865,8 +1877,15 @@ async function loadHorarios() {
       chip.type = "button";
       chip.className = "session-chip";
       if (isVoseFormat(s.format)) chip.classList.add("session-chip--vose");
+      const blocked = s.bookable === false;
+      if (blocked) {
+        chip.classList.add("session-chip--blocked");
+        chip.disabled = true;
+        chip.title = "Venta online cerrada · compra en taquilla";
+      } else {
+        chip.addEventListener("click", () => startSession(s, chip));
+      }
       chip.textContent = s.time;
-      chip.addEventListener("click", () => startSession(s, chip));
       filmSessions.appendChild(chip);
     }
   } catch (err) {

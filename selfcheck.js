@@ -399,12 +399,37 @@ const cervantes = CINES["48"];
 const carteleraSample = `
 <a href="/PeliculaCine/10/metromar-cinemas/16345/el-final-de-oak-street">
   <img src="https://www.compraentradas.com/img/Carteles/oak.jpg" alt="EL FINAL DE OAK STREET"/>
+  <h6>COMPRAR DIGITAL</h6>
 </a>
 `;
 const cartelera = parseCarteleraHtml(carteleraSample, metromar);
 assert(cartelera.length === 1, "cartelera one film");
 assert(cartelera[0].filmId === "16345", "cartelera filmId");
 assert(cartelera[0].title === "EL FINAL DE OAK STREET", "cartelera title");
+assert(cartelera[0].badge === "En cartelera", "cartelera digital badge");
+assert(!cartelera[0].hasVose, "cartelera digital no vose");
+
+const carteleraVoseSample = `
+<a href="/PeliculaCine/10/metromar-cinemas/16588/naza">
+  <img src="https://www.compraentradas.com/img/Carteles/naza.jpg" alt="NAZA"/>
+  <p class="title">NAZA</p>
+  <h6>COMPRAR VOS</h6>
+</a>
+`;
+const carteleraVose = parseCarteleraHtml(carteleraVoseSample, metromar);
+assert(carteleraVose.length === 1, "cartelera vose one film");
+assert(carteleraVose[0].badge === "En cartelera", "cartelera vose badge");
+assert(carteleraVose[0].hasVose === true, "cartelera vose hasVose");
+
+const carteleraMixSample = `
+<a href="/PeliculaCine/10/metromar-cinemas/16301/en-el-corazon-de-la-bestia">
+  <img src="https://www.compraentradas.com/img/Carteles/bestia.jpg" alt="EN EL CORAZON DE LA BESTIA"/>
+  <h6>COMPRAR DIGITAL-VOS</h6>
+</a>
+`;
+const carteleraMix = parseCarteleraHtml(carteleraMixSample, metromar);
+assert(carteleraMix[0].badge === "En cartelera", "cartelera digital-vos badge");
+assert(carteleraMix[0].hasVose === true, "cartelera digital-vos hasVose");
 
 const cervantesSample = `
 <a href="/PeliculaCine/48/cine-cervantes/999/spider-man">
@@ -448,6 +473,7 @@ const horarios = parseHorariosHtml(horariosSample, metromar);
 assert(horarios.length === 2, "horarios count");
 assert(horarios[0].sessionId === "336629" && horarios[0].time === "18:15", "horario first");
 assert(horarios[0].format === "DIGT" && horarios[1].format === "DIGT", "horario digt format");
+assert(horarios[0].bookable === true && horarios[1].bookable === true, "horario bookable");
 
 const horariosMultiSample = `
 <br /><span class="badge badge-secondary mr-3 mb-3" style="font-size: 1.2rem">DIGT</span>
@@ -465,12 +491,35 @@ assert(
 assert(horariosMulti[0].format === "DIGT" && horariosMulti[1].format === "V.O.S", "horarios multi format");
 assert(horariosMulti[1].sessionId === "337326", "horarios vose session");
 
+const horariosBlockedSample = `
+<br /><span class="badge badge-secondary mr-3 mb-3" style="font-size: 1.2rem">V.O.S</span>
+<a class="badge badge-danger mr-2 btn disabled" style="font-size: 1.2rem" href="" title="No es posible la venta en esta sesion">18:00</a>
+<a class="badge badge-danger mr-2 btn disabled" style="font-size: 1.2rem" href="" title="No es posible la venta en esta sesion">20:00</a>
+`;
+const horariosBlocked = parseHorariosHtml(horariosBlockedSample, metromar);
+assert(horariosBlocked.length === 2, "horarios blocked count");
+assert(horariosBlocked[0].time === "18:00" && horariosBlocked[1].time === "20:00", "horarios blocked times");
+assert(horariosBlocked[0].bookable === false && horariosBlocked[1].bookable === false, "horarios blocked flag");
+assert(horariosBlocked[0].format === "V.O.S", "horarios blocked format");
+assert(!horariosBlocked[0].sessionId, "horarios blocked no sessionId");
+
+const horariosMixedSample = `
+<br /><span class="badge badge-secondary mr-3 mb-3" style="font-size: 1.2rem">DIGT</span>
+<a class="badge badge-danger mr-2 btn disabled" style="font-size: 1.2rem" href="" title="No es posible la venta en esta sesion">17:45</a>
+<a class="badge badge-primary mr-2" style="font-size: 1.2rem" href='/Sesion/10/metromar-cinemas/naza/338736/1'>20:00</a>
+`;
+const horariosMixed = parseHorariosHtml(horariosMixedSample, metromar);
+assert(horariosMixed.length === 2, "horarios mixed count");
+assert(horariosMixed[0].bookable === false && horariosMixed[0].time === "17:45", "horarios mixed blocked first");
+assert(horariosMixed[1].bookable === true && horariosMixed[1].sessionId === "338736", "horarios mixed bookable");
+
 const horariosCerv = parseHorariosHtml(
   `<a href='/Sesion/48/cine-cervantes/la-odisea/111/1'>17:45</a>`,
   cervantes,
 );
 assert(horariosCerv.length === 1 && horariosCerv[0].time === "17:45", "cervantes horario");
 assert(horariosCerv[0].format === "", "cervantes no format");
+assert(horariosCerv[0].bookable === true, "cervantes bookable");
 
 const sesionVoseSample = `
 <h1><small>Metromar Cinemas - LA CONSTELACION DEL PERRO - VOS</small></h1>
@@ -572,6 +621,30 @@ assert(
   "ucc title",
 );
 assert(!isOpera({ title: "COYOTE VS ACME", slug: "coyote-vs-acme" }), "no ucc");
+assert(
+  isOpera({ title: "LA ISLA OLVIDADA TEA", slug: "la-isla-olvidada-tea" }),
+  "tea slug",
+);
+assert(isOpera({ title: "LA ISLA OLVIDADA TEA", slug: "x" }), "tea title");
+assert(!isOpera({ title: "LA ISLA OLVIDADA", slug: "la-isla-olvidada" }), "no tea");
+assert(
+  isOpera({ title: "CONCIERTO TRIBUTO", slug: "concierto-tributo" }),
+  "concierto title",
+);
+assert(
+  isOpera({
+    title: "QUEEN LIVE IN BUDAPEST",
+    slug: "queen-live-in-budapest",
+    synopsis:
+      "Grabado durante The Magic Tour en 1986, el concierto supuso un momento histórico.",
+  }),
+  "concierto synopsis",
+);
+assert(
+  !isOpera({ title: "QUEEN LIVE IN BUDAPEST", slug: "queen-live-in-budapest" }),
+  "queen without synopsis not hidden by title alone",
+);
+assert(!isOpera({ title: "LA BOLA NEGRA", slug: "la-bola-negra", synopsis: "Una comedia." }), "no concierto");
 
 assert(
   filmNameKey({ title: "EL FINAL DE OAK STREET", slug: "el-final-de-oak-street" }) === "elfinaldeoakstreet",

@@ -1613,6 +1613,10 @@ body.is-login {
   color: var(--color-accent);
 }
 
+.film-card__vose {
+  color: var(--color-vose);
+}
+
 .film-hero {
   display: flex;
   gap: 14px;
@@ -1744,6 +1748,24 @@ body.is-login {
 
 .session-chip--vose:hover {
   background: var(--color-vose-soft-hover);
+}
+
+.session-chip--blocked,
+.session-chip--blocked.session-chip--vose {
+  background: var(--color-pending-bg);
+  border-color: var(--color-pending-border);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.session-chip--blocked:hover,
+.session-chip--blocked.session-chip--vose:hover {
+  background: var(--color-pending-bg);
+}
+
+.session-chip--blocked:disabled {
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .price-list {

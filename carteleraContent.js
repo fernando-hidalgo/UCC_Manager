@@ -1,6 +1,5 @@
 /**
- * Hide films on CompraEntradas /Cine/* to match getCartelera filters.
- * Rules mirrored from functions/booking.js (isHiddenFilm).
+ * Hide films on CompraEntradas /Cine/* (ópera, sesión teta, TEA, UCC, conciertos).
  */
 (function () {
   const ALLOWED = new Set(["10", "48"]);
@@ -11,8 +10,14 @@
   const cineSlug = pathMatch[2];
 
   function isHiddenFilm(film) {
-    const blob = `${film?.title || ""} ${film?.slug || ""}`;
-    return /opera/i.test(blob) || /sesi[oó]n\s*teta/i.test(blob) || /\bucc\b/i.test(blob);
+    const blob = `${film?.title || ""} ${film?.slug || ""} ${film?.synopsis || ""} ${film?.description || ""}`;
+    return (
+      /opera/i.test(blob) ||
+      /sesi[oó]n\s*teta/i.test(blob) ||
+      /\btea\b/i.test(blob) ||
+      /\bucc\b/i.test(blob) ||
+      /concierto/i.test(blob)
+    );
   }
 
   function hide(el) {
@@ -54,13 +59,46 @@
     hideSessionsBySlug(filmSlug);
   }
 
-  for (const a of document.querySelectorAll(`a[href*="/PeliculaCine/${cineId}/"]`)) {
+  function decodeHtml(s) {
+    return String(s || "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'");
+  }
+
+  function extractSynopsis(html) {
+    const m = String(html || "").match(/Sinopsis:<\/strong>\s*([^<]+)/i);
+    return decodeHtml(m?.[1] || "").trim();
+  }
+
+  async function synopsisFromPelicula(pathname) {
+    try {
+      const res = await fetch(pathname, { credentials: "omit" });
+      if (!res.ok) return "";
+      return extractSynopsis(await res.text());
+    } catch {
+      return "";
+    }
+  }
+
+  async function maybeHide(a) {
     const parsed = parsePeliculaHref(a.getAttribute("href") || "");
-    if (!parsed) continue;
+    if (!parsed) return;
     const col = a.closest("[class*='col-']");
     const title = cardTitle(a);
     if (isHiddenFilm({ title, slug: parsed.slug })) {
       hideFilm(parsed.slug, col);
+      return;
+    }
+    const synopsis = await synopsisFromPelicula(parsed.href);
+    if (isHiddenFilm({ title, slug: parsed.slug, synopsis })) {
+      hideFilm(parsed.slug, col);
     }
   }
+
+  const cards = [...document.querySelectorAll(`a[href*="/PeliculaCine/${cineId}/"]`)];
+  Promise.all(cards.map((a) => maybeHide(a))).catch(() => {});
 })();
