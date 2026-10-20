@@ -94,6 +94,15 @@ function extractSynopsis(html) {
   return decodeHtml((String(html || "").match(/Sinopsis:<\/strong>\s*([^<]+)/i) || [])[1] || "").trim();
 }
 
+function isVoseFormat(format) {
+  return /^v\.?o\.?s\.?e?$/i.test(String(format || "").replace(/\s/g, ""));
+}
+
+function firstPeliculaDate(html) {
+  const m = String(html || "").match(/<option[^>]*value=['"](\d{2}-\d{2}-\d{4})['"][^>]*>/i);
+  return m ? m[1] : "";
+}
+
 async function enrichFilmsWithSynopsis(films, cine) {
   await Promise.all(
     films.map(async (film) => {
@@ -103,6 +112,17 @@ async function enrichFilmsWithSynopsis(films, cine) {
         );
         if (!res.ok) return;
         film.synopsis = extractSynopsis(text);
+        // Estreno CTAs never say COMPRAR …VOS; probe first date's horarios.
+        if (!film.hasVose && /^Estreno\b/i.test(film.badge || "")) {
+          const date = firstPeliculaDate(text);
+          if (!date) return;
+          const { text: horariosHtml, res: hRes } = await ceFetch(
+            `/HorariosDia/${date}/${cine.id}/${film.filmId}`,
+          );
+          if (!hRes.ok) return;
+          const sessions = parseHorariosHtml(horariosHtml, cine);
+          if (sessions.some((s) => isVoseFormat(s.format))) film.hasVose = true;
+        }
       } catch (err) {
         console.warn("enrichSynopsis", film.filmId, err?.message || err);
       }

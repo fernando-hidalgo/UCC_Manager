@@ -323,6 +323,22 @@ function parseLocalDate(dateStr) {
   return new Date(y, m - 1, d);
 }
 
+/** Film date from compraentradas: "DD-MM-YYYY". */
+function parseFilmDate(dateStr) {
+  const m = String(dateStr || "").match(/^(\d{2})-(\d{2})-(\d{4})$/);
+  if (!m) return null;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatSesionesLabel(dateStr) {
+  const d = parseFilmDate(dateStr);
+  if (!d) return "Fecha";
+  const weekday = new Intl.DateTimeFormat("es-ES", { weekday: "long" }).format(d);
+  const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `Sesiones para el ${capitalized}`;
+}
+
 function getToday() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1423,7 +1439,13 @@ const filmMeta = document.getElementById("film-meta");
 const filmSynopsis = document.getElementById("film-synopsis");
 const filmSynopsisMore = document.getElementById("film-synopsis-more");
 const filmDate = document.getElementById("film-date");
+const filmDateLabel = document.getElementById("film-date-label");
 const filmSessions = document.getElementById("film-sessions");
+
+function updateFilmDateLabel() {
+  if (!filmDateLabel) return;
+  filmDateLabel.textContent = formatSesionesLabel(booking.date || filmDate?.value || "");
+}
 const ticketsHeading = document.getElementById("tickets-heading");
 const priceList = document.getElementById("price-list");
 const menuList = document.getElementById("menu-list");
@@ -1842,6 +1864,7 @@ async function openFilm(filmBrief) {
     }
     booking.date = film.dates?.[0] || "";
     filmDate.value = booking.date;
+    updateFilmDateLabel();
     await loadHorarios();
     showCarteleraView("film");
   } catch (err) {
@@ -2281,6 +2304,7 @@ document.querySelectorAll("[data-cartelera-back]").forEach((btn) => {
 
 filmDate?.addEventListener("change", () => {
   booking.date = filmDate.value;
+  updateFilmDateLabel();
   showCarteleraMessage("");
   loadHorarios();
 });
