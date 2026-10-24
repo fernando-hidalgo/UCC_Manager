@@ -403,6 +403,19 @@ function formatSesionesLabel(dateStr) {
   return `Sesiones para el ${capitalized}`;
 }
 
+/** Longest es-ES weekday ("miércoles"); pad so date/VOSE columns align in monospace. */
+const FILM_DATE_WEEKDAY_WIDTH = 9;
+
+/** Visual label for date select options; value stays DD-MM-YYYY. */
+function formatFilmDateOption(dateStr, { vose = false } = {}) {
+  const d = parseFilmDate(dateStr);
+  if (!d) return vose ? `${dateStr}  (VOSE)` : dateStr;
+  const weekday = new Intl.DateTimeFormat("es-ES", { weekday: "long" }).format(d);
+  const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  const dayCol = capitalized.padEnd(FILM_DATE_WEEKDAY_WIDTH, "\u00A0");
+  return `${dayCol} ${dateStr}${vose ? "  (VOSE)" : ""}`;
+}
+
 function getToday() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1907,10 +1920,11 @@ async function openFilm(filmBrief) {
       filmSynopsisMore.textContent = "Ver más";
     }
     filmDate.replaceChildren();
+    const voseSet = new Set(film.voseDates || []);
     for (const d of film.dates || []) {
       const opt = document.createElement("option");
       opt.value = d;
-      opt.textContent = d;
+      opt.textContent = formatFilmDateOption(d, { vose: voseSet.has(d) });
       filmDate.appendChild(opt);
     }
     booking.date = film.dates?.[0] || "";

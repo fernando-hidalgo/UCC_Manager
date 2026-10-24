@@ -445,7 +445,25 @@ async function getPelicula({ cineId, filmId, slug }) {
   if (!/^\d+$/.test(id) || !s) throw new HttpsError("invalid-argument", "Película inválida.");
   const { text, res } = await ceFetch(`/PeliculaCine/${cine.id}/${cine.slug}/${id}/${s}`);
   if (!res.ok) throw new HttpsError("not-found", "Película no encontrada.");
-  return parsePeliculaHtml(text, id, s, cine);
+  const film = parsePeliculaHtml(text, id, s, cine);
+  const voseDates = [];
+  await Promise.all(
+    (film.dates || []).map(async (date) => {
+      try {
+        const { text: horariosHtml, res: hRes } = await ceFetch(
+          `/HorariosDia/${date}/${cine.id}/${id}`,
+        );
+        if (!hRes.ok) return;
+        const sessions = parseHorariosHtml(horariosHtml, cine);
+        if (sessions.some((session) => isVoseFormat(session.format))) {
+          voseDates.push(date);
+        }
+      } catch (err) {
+        console.warn("voseDates", date, err?.message || err);
+      }
+    }),
+  );
+  return { ...film, voseDates };
 }
 
 async function getHorarios({ cineId, filmId, date }) {
