@@ -956,6 +956,14 @@ body.is-login {
   color: var(--color-text);
 }
 
+.confirm-delete-overlay__actions {
+  margin-top: 8px;
+}
+
+.confirm-delete-overlay__actions .btn {
+  flex: 1;
+}
+
 .send-overlay__panel {
   max-width: 360px;
 }

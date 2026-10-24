@@ -53,10 +53,17 @@ const alertOverlay = document.getElementById("alert-overlay");
 const alertOverlayClose = document.getElementById("alert-overlay-close");
 const alertOverlayMessage = document.getElementById("alert-overlay-message");
 const alertOverlayOk = document.getElementById("alert-overlay-ok");
+const confirmDeleteOverlay = document.getElementById("confirm-delete-overlay");
+const confirmDeleteOverlayClose = document.getElementById("confirm-delete-overlay-close");
+const confirmDeleteOverlayCancel = document.getElementById("confirm-delete-overlay-cancel");
+const confirmDeleteOverlayConfirm = document.getElementById("confirm-delete-overlay-confirm");
+let confirmDeleteResolver = null;
 let sendTargetCode = "";
 let sendTargetKind = "code";
 
 const SEND_USED_MSG = "El código a enviar ya ha sido usado. Se ha eliminado";
+const CONFIRM_DELETE_MSG =
+  "El código aún no ha sido usado, ¿seguro que quieres borrarlo?";
 
 function canSendTicket(ticket) {
   return !ticket.isSharedCopy;
@@ -187,6 +194,48 @@ function closeAlertOverlay() {
   alertOverlayMessage.textContent = "";
 }
 
+function openConfirmDeleteOverlay() {
+  return new Promise((resolve) => {
+    confirmDeleteResolver = resolve;
+    const msg = document.getElementById("confirm-delete-overlay-message");
+    if (msg) msg.textContent = CONFIRM_DELETE_MSG;
+    confirmDeleteOverlay.hidden = false;
+    confirmDeleteOverlayCancel.focus();
+  });
+}
+
+function closeConfirmDeleteOverlay(confirmed = false) {
+  if (confirmDeleteOverlay.hidden) return;
+  confirmDeleteOverlay.hidden = true;
+  if (confirmDeleteResolver) {
+    confirmDeleteResolver(confirmed);
+    confirmDeleteResolver = null;
+  }
+}
+
+async function beginDeleteCode(code, deleteBtn) {
+  deleteBtn.disabled = true;
+  setBtnLabel(deleteBtn, "…");
+  let needsConfirm = false;
+  try {
+    const result = await validateCode(code);
+    needsConfirm = isSavableStatus(result?.status);
+  } catch {
+    showListMessage("No se pudo comprobar el código.", "error");
+    deleteBtn.disabled = false;
+    setBtnLabel(deleteBtn, "Eliminar");
+    return;
+  }
+  deleteBtn.disabled = false;
+  setBtnLabel(deleteBtn, "Eliminar");
+  if (needsConfirm) {
+    const confirmed = await openConfirmDeleteOverlay();
+    if (!confirmed) return;
+  }
+  await deleteCodeByValue(code);
+  await renderList();
+}
+
 async function beginSendCode(code, sendBtn) {
   if (!authSession) {
     showListMessage("Inicia sesión para enviar.", "error");
@@ -218,6 +267,13 @@ alertOverlayClose.addEventListener("click", closeAlertOverlay);
 alertOverlayOk.addEventListener("click", closeAlertOverlay);
 alertOverlay.addEventListener("click", (event) => {
   if (event.target === alertOverlay) closeAlertOverlay();
+});
+
+confirmDeleteOverlayClose.addEventListener("click", () => closeConfirmDeleteOverlay(false));
+confirmDeleteOverlayCancel.addEventListener("click", () => closeConfirmDeleteOverlay(false));
+confirmDeleteOverlayConfirm.addEventListener("click", () => closeConfirmDeleteOverlay(true));
+confirmDeleteOverlay.addEventListener("click", (event) => {
+  if (event.target === confirmDeleteOverlay) closeConfirmDeleteOverlay(false);
 });
 
 sendForm.addEventListener("submit", async (event) => {
@@ -275,6 +331,7 @@ document.addEventListener("keydown", (event) => {
   closeTicketOverlay();
   closeSendOverlay();
   closeAlertOverlay();
+  closeConfirmDeleteOverlay(false);
 });
 
 // ─── Code validation ────────────────────────────────────────────────────────
@@ -1313,10 +1370,7 @@ function createCard(item) {
   deleteBtn.className = "btn btn--danger btn--icon";
   deleteBtn.title = "Eliminar código";
   fillBtn(deleteBtn, "trash", "Eliminar");
-  deleteBtn.addEventListener("click", async () => {
-    await deleteCodeByValue(item.code);
-    await renderList();
-  });
+  deleteBtn.addEventListener("click", () => beginDeleteCode(item.code, deleteBtn));
 
   actions.append(copyBtn, barcodeBtn, sendBtn, deleteBtn);
   card.append(header, meta, actions);

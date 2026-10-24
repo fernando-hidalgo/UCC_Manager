@@ -448,6 +448,20 @@
     </div>
   </div>
 
+  <div id="confirm-delete-overlay" class="barcode-overlay" hidden>
+    <div class="barcode-overlay__panel send-overlay__panel" role="dialog" aria-modal="true" aria-labelledby="confirm-delete-overlay-title">
+      <div class="barcode-overlay__header">
+        <h2 id="confirm-delete-overlay-title" class="barcode-overlay__title">Confirmar</h2>
+        <button type="button" class="barcode-overlay__close" id="confirm-delete-overlay-close" aria-label="Cerrar">×</button>
+      </div>
+      <p class="alert-overlay__message" id="confirm-delete-overlay-message">El código aún no ha sido usado, ¿seguro que quieres borrarlo?</p>
+      <div class="form__actions confirm-delete-overlay__actions">
+        <button type="button" class="btn btn--secondary" id="confirm-delete-overlay-cancel">Cancelar</button>
+        <button type="button" class="btn btn--danger" id="confirm-delete-overlay-confirm">Borrar</button>
+      </div>
+    </div>
+  </div>
+
   <form id="pay-gateway-form" method="POST" hidden aria-hidden="true"></form>
 
   <script src="barcode.js"></script>

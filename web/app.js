@@ -98,10 +98,17 @@ const alertOverlay = document.getElementById("alert-overlay");
 const alertOverlayClose = document.getElementById("alert-overlay-close");
 const alertOverlayMessage = document.getElementById("alert-overlay-message");
 const alertOverlayOk = document.getElementById("alert-overlay-ok");
+const confirmDeleteOverlay = document.getElementById("confirm-delete-overlay");
+const confirmDeleteOverlayClose = document.getElementById("confirm-delete-overlay-close");
+const confirmDeleteOverlayCancel = document.getElementById("confirm-delete-overlay-cancel");
+const confirmDeleteOverlayConfirm = document.getElementById("confirm-delete-overlay-confirm");
+let confirmDeleteResolver = null;
 let sendTargetCode = "";
 let sendTargetKind = "code";
 
 const SEND_USED_MSG = "El código a enviar ya ha sido usado. Se ha eliminado";
+const CONFIRM_DELETE_MSG =
+  "El código aún no ha sido usado, ¿seguro que quieres borrarlo?";
 
 function canSendTicket(ticket) {
   return !ticket.isSharedCopy;
@@ -186,6 +193,63 @@ function closeAlertOverlay() {
   if (alertOverlay.hidden) return;
   alertOverlay.hidden = true;
   alertOverlayMessage.textContent = "";
+}
+
+function openConfirmDeleteOverlay() {
+  return new Promise((resolve) => {
+    confirmDeleteResolver = resolve;
+    const msg = document.getElementById("confirm-delete-overlay-message");
+    if (msg) msg.textContent = CONFIRM_DELETE_MSG;
+    confirmDeleteOverlay.hidden = false;
+    confirmDeleteOverlayCancel.focus();
+  });
+}
+
+function closeConfirmDeleteOverlay(confirmed = false) {
+  if (confirmDeleteOverlay.hidden) return;
+  confirmDeleteOverlay.hidden = true;
+  if (confirmDeleteResolver) {
+    confirmDeleteResolver(confirmed);
+    confirmDeleteResolver = null;
+  }
+}
+
+async function beginDeleteCode(code, deleteBtn) {
+  if (!user) {
+    showListMessage("Inicia sesión para borrar.", "error");
+    return;
+  }
+  deleteBtn.disabled = true;
+  setBtnLabel(deleteBtn, "…");
+  let needsConfirm = false;
+  try {
+    const result = await validateCodeRemote(code);
+    needsConfirm = isSavableStatus(result?.status);
+  } catch (err) {
+    console.error(err);
+    showListMessage("No se pudo comprobar el código.", "error");
+    deleteBtn.disabled = false;
+    setBtnLabel(deleteBtn, "Eliminar");
+    return;
+  }
+  deleteBtn.disabled = false;
+  setBtnLabel(deleteBtn, "Eliminar");
+  if (needsConfirm) {
+    const confirmed = await openConfirmDeleteOverlay();
+    if (!confirmed) return;
+  }
+  deleteBtn.disabled = true;
+  setBtnLabel(deleteBtn, "…");
+  try {
+    await deleteCodeRemote(user.uid, code);
+    saveCache(codes.filter((c) => c.code !== code));
+    renderList();
+  } catch (err) {
+    console.error(err);
+    deleteBtn.disabled = false;
+    setBtnLabel(deleteBtn, "Eliminar");
+    showListMessage("No se pudo borrar en la nube.", "error");
+  }
 }
 
 async function beginSendCode(code, sendBtn) {
@@ -1005,20 +1069,7 @@ function createCard(item) {
   deleteBtn.className = "btn btn--danger btn--icon";
   deleteBtn.title = "Eliminar código";
   fillBtn(deleteBtn, "trash", "Eliminar");
-  deleteBtn.addEventListener("click", async () => {
-    deleteBtn.disabled = true;
-    setBtnLabel(deleteBtn, "…");
-    try {
-      await deleteCodeRemote(user.uid, item.code);
-      saveCache(codes.filter((c) => c.code !== item.code));
-      renderList();
-    } catch (err) {
-      console.error(err);
-      deleteBtn.disabled = false;
-      setBtnLabel(deleteBtn, "Eliminar");
-      showListMessage("No se pudo borrar en la nube.", "error");
-    }
-  });
+  deleteBtn.addEventListener("click", () => beginDeleteCode(item.code, deleteBtn));
 
   actions.append(copyBtn, barcodeBtn, sendBtn, deleteBtn);
   card.append(header, meta, actions);
@@ -2465,6 +2516,13 @@ alertOverlay.addEventListener("click", (e) => {
   if (e.target === alertOverlay) closeAlertOverlay();
 });
 
+confirmDeleteOverlayClose.addEventListener("click", () => closeConfirmDeleteOverlay(false));
+confirmDeleteOverlayCancel.addEventListener("click", () => closeConfirmDeleteOverlay(false));
+confirmDeleteOverlayConfirm.addEventListener("click", () => closeConfirmDeleteOverlay(true));
+confirmDeleteOverlay.addEventListener("click", (e) => {
+  if (e.target === confirmDeleteOverlay) closeConfirmDeleteOverlay(false);
+});
+
 sendForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!user) {
@@ -2519,6 +2577,7 @@ document.addEventListener("keydown", (e) => {
   closeTicketOverlay();
   closeSendOverlay();
   closeAlertOverlay();
+  closeConfirmDeleteOverlay(false);
 });
 
 let authReady = false;
