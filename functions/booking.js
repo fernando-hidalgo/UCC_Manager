@@ -155,10 +155,15 @@ function parseCarteleraHtml(html, cine) {
       films.set(filmId, { filmId, slug: filmSlug, title, poster, badge: "", hasVose: false });
     }
   }
+  const pathPrefix = `/PeliculaCine/${id}/${slug}/`;
   for (const film of films.values()) {
-    const idx = html.indexOf(`/PeliculaCine/${id}/${slug}/${film.filmId}/`);
+    const marker = `${pathPrefix}${film.filmId}/`;
+    const idx = html.indexOf(marker);
     if (idx < 0) continue;
-    const chunk = html.slice(idx, idx + 800);
+    // Bound to next film link so a neighbor's COMPRAR …VOS does not leak.
+    const nextIdx = html.indexOf(pathPrefix, idx + marker.length);
+    const end = nextIdx >= 0 ? nextIdx : Math.min(html.length, idx + 800);
+    const chunk = html.slice(idx, end);
     film.hasVose = /COMPRAR\s+(?:DIGITAL-)?VOS/i.test(chunk);
     const estreno = (chunk.match(/ESTRENO:\s*(\d{2}\/\d{2}\/\d{4})/i) || [])[1];
     if (estreno) film.badge = `Estreno ${estreno}`;

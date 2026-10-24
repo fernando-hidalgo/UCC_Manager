@@ -431,6 +431,28 @@ const carteleraMix = parseCarteleraHtml(carteleraMixSample, metromar);
 assert(carteleraMix[0].badge === "En cartelera", "cartelera digital-vos badge");
 assert(carteleraMix[0].hasVose === true, "cartelera digital-vos hasVose");
 
+// Neighbor DIGITAL-VOS must not leak into previous film's 800-char window.
+const carteleraAdjacentSample = `
+<a href="/PeliculaCine/10/metromar-cinemas/16523/arriba-tutto">
+  <img src="https://www.compraentradas.com/img/Carteles/arriba_tutto_2026.jpg" alt="ARRIBA TUTTO"/>
+  <p class="title">ARRIBA TUTTO</p>
+  <h6>COMPRAR DIGITAL</h6>
+</a>
+</div>
+<div class="col-lg-2">
+<a href="/PeliculaCine/10/metromar-cinemas/16543/clayface">
+  <img src="https://www.compraentradas.com/img/Carteles/clayface_2026.jpg" alt="CLAYFACE"/>
+  <p class="title">CLAYFACE</p>
+  <h6>COMPRAR DIGITAL-VOS</h6>
+</a>
+`;
+const carteleraAdjacent = parseCarteleraHtml(carteleraAdjacentSample, metromar);
+assert(carteleraAdjacent.length === 2, "cartelera adjacent two films");
+const arriba = carteleraAdjacent.find((f) => f.filmId === "16523");
+const clayface = carteleraAdjacent.find((f) => f.filmId === "16543");
+assert(arriba && !arriba.hasVose, "adjacent digital not polluted by neighbor VOS");
+assert(clayface && clayface.hasVose === true, "adjacent digital-vos keeps hasVose");
+
 const cervantesSample = `
 <a href="/PeliculaCine/48/cine-cervantes/999/spider-man">
   <img src="/Carteles/spiderman.jpg" alt="SPIDER-MAN"/>
