@@ -875,10 +875,14 @@ body:has(#view-app:not([hidden])) {
 
 .friend-combobox {
   position: relative;
+  display: block;
+  width: 100%;
   z-index: 5;
 }
 
 .friend-combobox .form__input {
+  display: block;
+  width: 100%;
   outline: none;
 }
 
@@ -900,7 +904,8 @@ body:has(#view-app:not([hidden])) {
   position: absolute;
   top: 100%;
   left: 0;
-  right: 0;
+  width: 100%;
+  box-sizing: border-box;
   z-index: 40;
   margin: 0;
   padding: 4px 0;
