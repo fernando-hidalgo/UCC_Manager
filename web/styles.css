@@ -32,6 +32,7 @@
   --color-pending-border: #d1d5db;
   --radius: 10px;
   --shadow: 0 2px 8px rgba(0, 48, 146, 0.1);
+  --focus-ring: 0 0 0 3px rgba(0, 48, 146, 0.2);
   --font: "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -243,14 +244,19 @@ body.is-login {
 }
 
 .header__brand {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   min-width: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .header__actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
@@ -272,8 +278,34 @@ body.is-login {
   white-space: nowrap;
 }
 
+@media (max-width: 420px) {
+  .header__row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .header__actions {
+    justify-content: flex-end;
+  }
+
+  .btn--header-add,
+  .btn--auth {
+    padding: 6px 8px;
+    font-size: 11px;
+    min-height: 36px;
+  }
+}
+
 .btn--header-add:hover:not(:disabled) {
   background: #f8fafc;
+}
+
+.btn--header-add--active,
+.btn--header-add--active:hover:not(:disabled) {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
 }
 
 .btn--header-add[hidden] {
@@ -284,6 +316,9 @@ body.is-login {
   font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header__subtitle {
@@ -294,11 +329,14 @@ body.is-login {
 }
 
 .header__auth-email {
-  margin-top: 3px;
+  margin: 0;
   font-size: 0.85rem;
   opacity: 0.85;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-align: right;
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
 }
 
@@ -486,6 +524,7 @@ body.is-login {
 
 .panel {
   display: none;
+  position: relative;
 }
 
 .panel--active {
@@ -636,11 +675,36 @@ body.is-login {
 .form-message {
   font-size: 12px;
   text-align: center;
-  margin-bottom: 12px;
-  padding: 8px;
+  margin: 0;
+  padding: 0 8px;
+  max-height: 0;
   border-radius: var(--radius);
   background: var(--color-primary-soft);
   color: var(--color-primary);
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.22s ease,
+    max-height 0.22s ease,
+    padding 0.22s ease,
+    margin 0.22s ease;
+}
+
+.list-message.toast--visible,
+.form-message.toast--visible {
+  max-height: 48px;
+  opacity: 1;
+  padding: 8px;
+  pointer-events: auto;
+}
+
+.list-message.toast--visible {
+  margin-bottom: 12px;
+}
+
+.form-message.toast--visible {
+  margin-top: 4px;
 }
 
 .list-message--success,
@@ -978,6 +1042,7 @@ body.is-login {
 }
 
 .send-overlay__form {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -991,7 +1056,138 @@ body.is-login {
   width: 100%;
 }
 
+.friend-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.friend-add-row .form__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.friend-add-row .btn {
+  flex-shrink: 0;
+}
+
+.friend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.friend-row__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-row__remove {
+  appearance: none;
+  -moz-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+  color: var(--color-danger, #c0392b);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.friend-row__remove:hover {
+  background: var(--color-danger-bg, #fdecea);
+}
+
+.friend-combobox {
+  position: relative;
+  z-index: 5;
+}
+
+.friend-combobox .form__input {
+  outline: none;
+}
+
+.friend-combobox .form__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
+}
+
+/* Lista absoluta: no redimensiona la card; laterales alineados con el input. */
+.friend-combobox:has(.friend-combobox__list:not([hidden])) .form__input,
+.friend-combobox:has(.friend-combobox__list:not([hidden])) .form__input:focus {
+  border: 1px solid var(--color-primary);
+  border-bottom-color: var(--color-border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  box-shadow: none;
+}
+
+.friend-combobox__list {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--color-primary);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: none;
+}
+
+.friend-combobox__list[hidden] {
+  display: none !important;
+}
+
+.friend-combobox__list li {
+  margin: 0;
+}
+
+.friend-combobox__option {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  font-family: var(--font);
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.friend-combobox__option:hover,
+.friend-combobox__option--active,
+.friend-combobox__option:focus-visible {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+  outline: none;
+}
+
 .form__group {
+  position: relative;
   margin-bottom: 14px;
   min-width: 0;
   max-width: 100%;
@@ -1173,6 +1369,12 @@ body.is-login {
   background: var(--color-surface);
   color: var(--color-text);
   text-align: left;
+  outline: none;
+}
+
+.form__input:focus {
+  border-color: var(--color-primary);
+  box-shadow: var(--focus-ring);
 }
 
 /* Monospace so weekday padding aligns date / (VOSE) columns in options. */

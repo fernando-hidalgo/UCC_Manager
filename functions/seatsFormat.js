@@ -41,10 +41,21 @@ function collectSeatsByRow(raw) {
     while ((m = re.exec(text))) add(m[1], m[2]);
   }
 
+  if (byRow.size === 0) {
+    const shortRe = /F(\d+);\s*B([\d,\s]+)/gi;
+    let m;
+    while ((m = shortRe.exec(text))) {
+      for (const num of m[2].split(/\s*,\s*/)) {
+        const n = num.trim();
+        if (/^\d+$/.test(n)) add(m[1], n);
+      }
+    }
+  }
+
   return byRow;
 }
 
-/** Agrupa "Fila X Butaca Y; Fila X Butaca Z" → "Fila X Butacas Y y Z". */
+/** Agrupa asientos → "F4; B1,3,5" (varias filas: "F6; B6,4; F9; B3"). */
 function formatSeatsText(raw) {
   const text = String(raw || "").trim();
   if (!text) return "";
@@ -52,17 +63,8 @@ function formatSeatsText(raw) {
   const byRow = collectSeatsByRow(text);
   if (byRow.size === 0) return text;
 
-  function joinNums(nums) {
-    if (nums.length === 1) return nums[0];
-    if (nums.length === 2) return `${nums[0]} y ${nums[1]}`;
-    return `${nums.slice(0, -1).join(", ")} y ${nums[nums.length - 1]}`;
-  }
-
   return [...byRow.entries()]
-    .map(([fila, butacas]) => {
-      const label = butacas.length === 1 ? "Butaca" : "Butacas";
-      return `Fila ${fila} ${label} ${joinNums(butacas)}`;
-    })
+    .map(([fila, butacas]) => `F${fila}; B${butacas.join(",")}`)
     .join("; ");
 }
 

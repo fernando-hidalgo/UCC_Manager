@@ -311,33 +311,30 @@ assert(showtimeToCreatedAt("") === "2026-08-05", "empty showtime → today");
 
 const { formatSeatsText, countSeats } = require("./seatsFormat");
 assert(
-  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4") === "Fila 6 Butacas 6 y 4",
+  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4") === "F6; B6,4",
   "same row two seats",
 );
 assert(
-  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 6 Butaca 2") ===
-    "Fila 6 Butacas 6, 4 y 2",
+  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 6 Butaca 2") === "F6; B6,4,2",
   "same row three seats",
 );
 assert(
-  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 9 Butaca 3") ===
-    "Fila 6 Butacas 6 y 4; Fila 9 Butaca 3",
-  "two rows plural and singular",
+  formatSeatsText("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 9 Butaca 3") === "F6; B6,4; F9; B3",
+  "two rows",
 );
-assert(formatSeatsText("Fila 9 Butaca 3") === "Fila 9 Butaca 3", "single seat stays singular");
+assert(formatSeatsText("Fila 9 Butaca 3") === "F9; B3", "single seat");
 assert(
   formatSeatsText("Butaca Fila: 6, Butaca: 11 - 5,75 €.; Butaca Fila: 6, Butaca: 13 - 5,75 €.") ===
-    "Fila 6 Butacas 11 y 13",
+    "F6; B11,13",
   "raw compraentradas lines",
 );
-assert(
-  formatSeatsText("Fila 6 Butacas 6 y 4") === "Fila 6 Butacas 6 y 4",
-  "already formatted idempotent",
-);
+assert(formatSeatsText("Fila 6 Butacas 6 y 4") === "F6; B6,4", "legacy long format");
+assert(formatSeatsText("F6; B6,4") === "F6; B6,4", "short format idempotent");
 assert(countSeats("Fila 6 Butacas 6 y 4") === 2, "countSeats two");
 assert(countSeats("Fila 9 Butaca 3") === 1, "countSeats one");
 assert(countSeats("") === 1, "countSeats empty fallback");
 assert(countSeats("Fila 6 Butaca 6; Fila 6 Butaca 4; Fila 9 Butaca 3") === 3, "countSeats three");
+assert(countSeats("F6; B6,4; F9; B3") === 3, "countSeats short format");
 
 function decodeHtml(s) {
   return String(s || "")

@@ -88,6 +88,40 @@ export async function transferTicketRemote(accessCode, toUsername) {
   return res.data;
 }
 
+function friendsCol(uid) {
+  return collection(db, "users", uid, "friends");
+}
+
+export async function pullFriends(uid) {
+  const snap = await getDocs(friendsCol(uid));
+  return snap.docs
+    .map((d) => {
+      const data = d.data() || {};
+      const username = String(data.username || "").trim();
+      if (!username && !d.id) return null;
+      return {
+        uid: String(data.uid || d.id || ""),
+        email: String(data.email || "").trim(),
+        username: username || String(data.email || "").split("@")[0],
+        addedAt: String(data.addedAt || "").trim(),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.username.localeCompare(b.username, "es"));
+}
+
+export async function addFriendRemote(username) {
+  const fn = httpsCallable(functions, "addFriend");
+  const res = await fn({ username: String(username).trim() });
+  return res.data;
+}
+
+export async function deleteFriendRemote(uid, friendUid) {
+  const id = String(friendUid || "").trim();
+  if (!id) return;
+  await deleteDoc(doc(friendsCol(uid), id));
+}
+
 export async function fetchEntradaRemote(referencia) {
   const fn = httpsCallable(functions, "fetchEntrada");
   const res = await fn({ referencia: String(referencia).trim() });

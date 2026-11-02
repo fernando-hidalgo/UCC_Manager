@@ -40,6 +40,59 @@ function requireAuth(request) {
   }
 }
 
+/** Resolve username/email to Auth user (same domain as sender when no @). */
+async function resolvePeerUser(senderUid, senderEmail, rawInput) {
+  const rawUser = String(rawInput || "").trim().toLowerCase();
+  if (!rawUser) {
+    throw new HttpsError("invalid-argument", "Introduce un nombre de usuario.");
+  }
+
+  let toEmail;
+  if (rawUser.includes("@")) {
+    toEmail = rawUser;
+  } else {
+    const domain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+    if (!domain) {
+      throw new HttpsError("failed-precondition", "No se pudo resolver el destinatario.");
+    }
+    if (!/^[a-z0-9._%+-]+$/i.test(rawUser)) {
+      throw new HttpsError("invalid-argument", "Nombre de usuario no válido.");
+    }
+    toEmail = `${rawUser}@${domain}`;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toEmail)) {
+    throw new HttpsError("invalid-argument", "Nombre de usuario no válido.");
+  }
+
+  const senderUser = senderEmail.includes("@") ? senderEmail.split("@")[0] : "";
+  const targetUser = toEmail.split("@")[0];
+  if (senderEmail && (senderEmail === toEmail || senderUser === targetUser)) {
+    throw new HttpsError("invalid-argument", "No puedes añadirte a ti mismo.");
+  }
+
+  let recipient;
+  try {
+    recipient = await getAuth().getUserByEmail(toEmail);
+  } catch (err) {
+    if (err?.code === "auth/user-not-found") {
+      throw new HttpsError("not-found", "Ese usuario no existe");
+    }
+    console.error("resolvePeerUser getUserByEmail", err);
+    throw new HttpsError("internal", "No se pudo comprobar el usuario.");
+  }
+
+  if (recipient.uid === senderUid) {
+    throw new HttpsError("invalid-argument", "No puedes añadirte a ti mismo.");
+  }
+
+  return {
+    recipient,
+    toEmail,
+    username: targetUser,
+  };
+}
+
 async function blobToDataUrl(res) {
   const buf = Buffer.from(await res.arrayBuffer());
   const ctype = res.headers.get("content-type") || "image/png";
@@ -146,6 +199,37 @@ exports.purgeDeadCodes = onCall(async (request) => {
     console.error("purgeDeadCodes", err);
     throw new HttpsError("internal", "No se pudieron comprobar los códigos.");
   }
+});
+
+exports.addFriend = onCall(async (request) => {
+  requireAuth(request);
+  const senderUid = request.auth.uid;
+  const senderEmail = String(request.auth.token?.email || "").trim().toLowerCase();
+  const rawUser = String(
+    request.data?.username || request.data?.toUsername || request.data?.toEmail || "",
+  ).trim();
+
+  const { recipient, toEmail, username } = await resolvePeerUser(
+    senderUid,
+    senderEmail,
+    rawUser,
+  );
+
+  const db = getFirestore();
+  const friendRef = db.doc(`users/${senderUid}/friends/${recipient.uid}`);
+  const existing = await friendRef.get();
+  if (existing.exists) {
+    throw new HttpsError("already-exists", "Ya está en tu lista");
+  }
+
+  const friend = {
+    uid: recipient.uid,
+    email: toEmail,
+    username,
+    addedAt: new Date().toISOString().slice(0, 10),
+  };
+  await friendRef.set(friend);
+  return { ok: true, friend };
 });
 
 exports.transferCode = onCall(

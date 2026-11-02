@@ -240,6 +240,54 @@ async function transferCodeRemote(code, toUsername) {
   });
 }
 
+function fieldsToFriend(fields) {
+  if (!fields?.uid?.stringValue && !fields?.username?.stringValue) return null;
+  return {
+    uid: fields.uid?.stringValue || "",
+    email: fields.email?.stringValue || "",
+    username: fields.username?.stringValue || "",
+    addedAt: fields.addedAt?.stringValue || "",
+  };
+}
+
+async function pullRemoteFriends() {
+  const session = await getValidSession();
+  if (!session) return null;
+
+  const data = await firestoreFetch(`/users/${session.uid}/friends`, { session });
+  if (!data?.documents) return [];
+
+  return data.documents
+    .map((doc) => {
+      const friend = fieldsToFriend(doc.fields);
+      if (!friend) return null;
+      if (!friend.uid && doc.name) {
+        friend.uid = String(doc.name).split("/").pop() || "";
+      }
+      return friend;
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.username.localeCompare(b.username, "es"));
+}
+
+async function addFriendRemote(username) {
+  return callCallable("addFriend", {
+    username: String(username).trim(),
+  });
+}
+
+async function deleteFriendRemote(friendUid) {
+  const session = await getValidSession();
+  if (!session) return;
+
+  const id = String(friendUid || "").trim();
+  if (!id) return;
+  await firestoreFetch(`/users/${session.uid}/friends/${id}`, {
+    method: "DELETE",
+    session,
+  });
+}
+
 async function transferTicketRemote(accessCode, toUsername) {
   return callCallable("transferTicket", {
     accessCode: String(accessCode).trim(),

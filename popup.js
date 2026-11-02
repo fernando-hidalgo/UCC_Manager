@@ -35,9 +35,16 @@ const ticketsMessage = document.getElementById("tickets-message");
 const sortButtons = document.querySelectorAll("#panel-list .sort-toggle__btn[data-sort]");
 const refreshCodesBtn = document.getElementById("refresh-codes-btn");
 const addCodeBtn = document.getElementById("add-code-btn");
+const friendsBtn = document.getElementById("friends-btn");
 const ticketSortBtn = document.getElementById("ticket-sort-btn");
 const listMessage = document.getElementById("list-message");
 const formMessage = document.getElementById("form-message");
+const friendForm = document.getElementById("friend-form");
+const friendInput = document.getElementById("friend-input");
+const friendSubmit = document.getElementById("friend-submit");
+const friendMessage = document.getElementById("friend-message");
+const friendsListEl = document.getElementById("friends-list");
+const emptyFriends = document.getElementById("empty-friends");
 const barcodeOverlay = document.getElementById("barcode-overlay");
 const barcodeOverlaySvg = document.getElementById("barcode-overlay-svg");
 const barcodeOverlayClose = document.getElementById("barcode-overlay-close");
@@ -47,8 +54,12 @@ const sendOverlayTitle = document.getElementById("send-overlay-title");
 const sendOverlayCode = document.getElementById("send-overlay-code");
 const sendForm = document.getElementById("send-form");
 const sendEmail = document.getElementById("send-username");
+const sendFriendsList = document.getElementById("send-friends-list");
 const sendError = document.getElementById("send-error");
 const sendSubmit = document.getElementById("send-submit");
+let friends = [];
+const ICON_GROUP_REMOVE =
+  "M474-486q26-32 38.5-66t12.5-79q0-45-12.5-79T474-776q76-17 133.5 23T665-631q0 82-57.5 122T474-486Zm216 326v-94q0-51-26-95t-90-74q173 22 236.5 64T874-254v94H690Zm270-389H700v-60h260v60Zm-753 26q-42-42-42-108t42-108q42-42 108-42t108 42q42 42 42 108t-42 108q-42 42-108 42t-108-42ZM0-160v-94q0-35 18.5-63.5T68-360q72-32 128.5-46T315-420q62 0 118 14t128 46q31 14 50 42.5t19 63.5v94H0Z";
 const alertOverlay = document.getElementById("alert-overlay");
 const alertOverlayClose = document.getElementById("alert-overlay-close");
 const alertOverlayMessage = document.getElementById("alert-overlay-message");
@@ -146,12 +157,55 @@ ticketOverlay.addEventListener("click", (event) => {
 
 function setSendError(text) {
   if (!text) {
+    sendError.classList.remove("toast--visible");
     sendError.hidden = true;
     sendError.textContent = "";
     return;
   }
   sendError.hidden = false;
   sendError.textContent = text;
+  sendError.classList.add("toast--visible");
+}
+
+function hideSendFriendsList() {
+  if (!sendFriendsList) return;
+  sendFriendsList.hidden = true;
+  sendFriendsList.replaceChildren();
+  sendEmail?.setAttribute("aria-expanded", "false");
+}
+
+function filteredFriends(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return friends.slice();
+  return friends.filter((f) => f.username.toLowerCase().includes(q));
+}
+
+function renderSendFriendsList() {
+  if (!sendFriendsList) return;
+  const matches = filteredFriends(sendEmail.value);
+  sendFriendsList.replaceChildren();
+  if (!matches.length) {
+    hideSendFriendsList();
+    return;
+  }
+  for (const friend of matches) {
+    const li = document.createElement("li");
+    li.setAttribute("role", "option");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "friend-combobox__option";
+    btn.textContent = friend.username;
+    btn.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      sendEmail.value = friend.username;
+      hideSendFriendsList();
+      sendEmail.focus();
+    });
+    li.appendChild(btn);
+    sendFriendsList.appendChild(li);
+  }
+  sendFriendsList.hidden = false;
+  sendEmail.setAttribute("aria-expanded", "true");
 }
 
 async function openSendOverlay(id, kind = "code") {
@@ -169,8 +223,10 @@ async function openSendOverlay(id, kind = "code") {
   sendEmail.value = "";
   setSendError("");
   sendSubmit.disabled = false;
+  hideSendFriendsList();
   sendOverlay.hidden = false;
   sendEmail.focus();
+  renderSendFriendsList();
 }
 
 function closeSendOverlay() {
@@ -180,6 +236,7 @@ function closeSendOverlay() {
   sendTargetKind = "code";
   sendEmail.value = "";
   setSendError("");
+  hideSendFriendsList();
 }
 
 function openAlertOverlay(message) {
@@ -491,6 +548,18 @@ function parseShowtimeDate(showtime) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+/** Card display: "17/06/2026 - 19:30 - Sala 3" → "Miércoles 17/6 - 19:30 - Sala 3". */
+function formatShowtimeDisplay(showtime) {
+  const text = String(showtime || "").trim();
+  const m = text.match(/^(\d{2})\/(\d{2})\/(\d{4})(.*)$/);
+  if (!m) return text;
+  const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  if (Number.isNaN(d.getTime())) return text;
+  const weekday = new Intl.DateTimeFormat("es-ES", { weekday: "long" }).format(d);
+  const capitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+  return `${capitalized} ${Number(m[1])}/${Number(m[2])}${m[4]}`;
+}
+
 let selectedDate = new Date();
 let visibleMonth = { year: selectedDate.getFullYear(), month: selectedDate.getMonth() };
 
@@ -664,13 +733,49 @@ async function deleteTicketByAccessCode(accessCode) {
   await saveTickets(next);
 }
 
+const toastTimers = new WeakMap();
+
+function showToast(el, text, baseClass, type = "success", ms = 3000) {
+  if (!el) return;
+  const prev = toastTimers.get(el) || {};
+  clearTimeout(prev.hide);
+  clearTimeout(prev.fade);
+  if (prev.onEnd) el.removeEventListener("transitionend", prev.onEnd);
+
+  if (!text) {
+    el.classList.remove("toast--visible");
+    el.hidden = true;
+    el.textContent = "";
+    el.className = baseClass;
+    toastTimers.delete(el);
+    return;
+  }
+
+  const typeSuffix = type ? ` ${baseClass}--${type}` : "";
+  el.className = `${baseClass}${typeSuffix}`;
+  el.textContent = text;
+  el.hidden = false;
+  void el.offsetWidth;
+  el.classList.add("toast--visible");
+
+  const hideTimer = setTimeout(() => {
+    el.classList.remove("toast--visible");
+    let fadeTimer = 0;
+    const finish = () => {
+      el.removeEventListener("transitionend", finish);
+      clearTimeout(fadeTimer);
+      el.hidden = true;
+      toastTimers.delete(el);
+    };
+    el.addEventListener("transitionend", finish);
+    fadeTimer = setTimeout(finish, 280);
+    toastTimers.set(el, { hide: 0, fade: fadeTimer, onEnd: finish });
+  }, ms);
+  toastTimers.set(el, { hide: hideTimer, fade: 0, onEnd: null });
+}
+
 function showTicketsMessage(text, type = "success") {
-  ticketsMessage.textContent = text;
-  ticketsMessage.className = `list-message list-message--${type}`;
-  ticketsMessage.hidden = false;
-  setTimeout(() => {
-    ticketsMessage.hidden = true;
-  }, 3000);
+  showToast(ticketsMessage, text, "list-message", type, 3000);
 }
 
 function createTicketCard(ticket) {
@@ -689,7 +794,9 @@ function createTicketCard(ticket) {
   const meta = document.createElement("div");
   meta.className = "card__meta";
   if (ticket.showtime) {
-    meta.appendChild(createMetaRow(createMetaIcon(ICONS.clock), ticket.showtime, "card__date"));
+    meta.appendChild(
+      createMetaRow(createMetaIcon(ICONS.clock), formatShowtimeDisplay(ticket.showtime), "card__date"),
+    );
   }
   if (ticket.seatsText) {
     meta.appendChild(
@@ -1030,7 +1137,7 @@ function sortCodes(entries) {
 function activateTab(tabId, persistDraft = true) {
   activeTabId = tabId;
   tabButtons.forEach((btn) => {
-    const active = tabId !== "add" && btn.dataset.tab === tabId;
+    const active = tabId !== "add" && tabId !== "amigos" && btn.dataset.tab === tabId;
     btn.classList.toggle("tabs__btn--active", active);
     btn.setAttribute("aria-selected", String(active));
   });
@@ -1039,8 +1146,66 @@ function activateTab(tabId, persistDraft = true) {
     panel.classList.toggle("panel--active", show);
     panel.hidden = !show;
   });
-  addCodeBtn.hidden = tabId === "add";
+  addCodeBtn.classList.toggle("btn--header-add--active", tabId === "add");
+  friendsBtn?.classList.toggle("btn--header-add--active", tabId === "amigos");
   if (persistDraft) saveFormDraft();
+}
+
+function setFriendMessage(text, type = "info") {
+  showToast(friendMessage, text, "form-message", type, 3000);
+}
+
+function renderFriends() {
+  if (!friendsListEl || !emptyFriends) return;
+  friendsListEl.replaceChildren();
+  const empty = friends.length === 0;
+  emptyFriends.hidden = !empty;
+  for (const friend of friends) {
+    const row = document.createElement("div");
+    row.className = "friend-row";
+    const name = document.createElement("span");
+    name.className = "friend-row__name";
+    name.textContent = friend.username;
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "friend-row__remove";
+    removeBtn.title = "Eliminar amigo";
+    removeBtn.setAttribute("aria-label", `Eliminar ${friend.username}`);
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 -960 960 960");
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("fill", "currentColor");
+    path.setAttribute("d", ICON_GROUP_REMOVE);
+    svg.appendChild(path);
+    removeBtn.appendChild(svg);
+    removeBtn.addEventListener("click", async () => {
+      removeBtn.disabled = true;
+      try {
+        await deleteFriendRemote(friend.uid);
+        friends = friends.filter((f) => f.uid !== friend.uid);
+        renderFriends();
+        setFriendMessage("Amigo eliminado.", "success");
+      } catch (err) {
+        setFriendMessage(err?.message || "No se pudo eliminar.", "error");
+        removeBtn.disabled = false;
+      }
+    });
+    row.append(name, removeBtn);
+    friendsListEl.appendChild(row);
+  }
+}
+
+async function loadFriends() {
+  try {
+    const remote = await pullRemoteFriends();
+    friends = Array.isArray(remote) ? remote : [];
+  } catch {
+    friends = [];
+  }
+  renderFriends();
 }
 
 // ─── UI: rendering ──────────────────────────────────────────────────────────
@@ -1419,12 +1584,7 @@ async function copyCode(code, button) {
 }
 
 function showListMessage(text, type = "success") {
-  listMessage.textContent = text;
-  listMessage.className = `list-message list-message--${type}`;
-  listMessage.hidden = false;
-  setTimeout(() => {
-    listMessage.hidden = true;
-  }, 3000);
+  showToast(listMessage, text, "list-message", type, 3000);
 }
 
 let refreshOkTimer = 0;
@@ -1442,12 +1602,7 @@ function flashRefreshOk(btn) {
 }
 
 function showFormMessage(text, type = "success") {
-  formMessage.textContent = text;
-  formMessage.className = `form-message form-message--${type}`;
-  formMessage.hidden = false;
-  setTimeout(() => {
-    formMessage.hidden = true;
-  }, 2500);
+  showToast(formMessage, text, "form-message", type, 2500);
 }
 
 // ─── Auth / views ───────────────────────────────────────────────────────────
@@ -1500,6 +1655,7 @@ async function enterApp() {
   } catch {
     /* use session cache */
   }
+  await loadFriends();
   await renderList();
   await renderTickets();
 }
@@ -1508,8 +1664,10 @@ async function leaveApp() {
   await signOut();
   authSession = null;
   await clearCodesCache();
+  friends = [];
   codeList.replaceChildren();
   ticketList.replaceChildren();
+  friendsListEl?.replaceChildren();
   closeTicketOverlay();
   clearForm();
   showView("login");
@@ -1633,6 +1791,63 @@ addCodeBtn.addEventListener("click", () => {
   toggleCalendar(false);
   activateTab("add");
   codeInput.focus();
+});
+
+friendsBtn?.addEventListener("click", () => {
+  toggleCalendar(false);
+  activateTab("amigos");
+  friendInput?.focus();
+});
+
+friendForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!authSession) {
+    setFriendMessage("Inicia sesión para añadir amigos.", "error");
+    return;
+  }
+  const username = friendInput.value.trim();
+  if (!username) {
+    setFriendMessage("Introduce un nombre de usuario.", "error");
+    return;
+  }
+  friendSubmit.disabled = true;
+  setFriendMessage("");
+  try {
+    const result = await addFriendRemote(username);
+    const friend = result?.friend;
+    if (friend?.uid) {
+      friends = [...friends.filter((f) => f.uid !== friend.uid), friend].sort((a, b) =>
+        a.username.localeCompare(b.username, "es"),
+      );
+    } else {
+      await loadFriends();
+    }
+    friendInput.value = "";
+    renderFriends();
+    setFriendMessage("Amigo añadido.", "success");
+  } catch (err) {
+    setFriendMessage(err?.message || "No se pudo añadir.", "error");
+  } finally {
+    friendSubmit.disabled = false;
+  }
+});
+
+sendEmail?.addEventListener("focus", () => {
+  renderSendFriendsList();
+});
+
+sendEmail?.addEventListener("input", () => {
+  renderSendFriendsList();
+});
+
+sendEmail?.addEventListener("blur", () => {
+  setTimeout(() => hideSendFriendsList(), 120);
+});
+
+sendEmail?.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    hideSendFriendsList();
+  }
 });
 
 codeInput.addEventListener("input", () => {
