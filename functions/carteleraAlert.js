@@ -56,6 +56,16 @@ function excludeNotifiedFilms(films, notifiedIds, notifiedNames) {
   });
 }
 
+/** True when badge is exactly "En cartelera" (already on screen, not a novelty). */
+function isEnCarteleraBadge(film) {
+  return /^En cartelera$/i.test(String(film?.badge || "").trim());
+}
+
+/** Drop films already in theaters — only estrenos / other statuses go in the mail. */
+function excludeEnCarteleraFilms(films) {
+  return (films || []).filter((f) => !isEnCarteleraBadge(f));
+}
+
 /** Lazy migration: missing notifiedFilmIds → treat snapshot filmIds as already notified. */
 function resolveNotifiedFilmIds(metaData) {
   const data = metaData || {};
@@ -330,10 +340,12 @@ async function processCineSnapshot(cineId) {
   const storedIds = metaData.filmIds || [];
   const storedNames = metaData.filmNames || [];
   const brandNew = diffNewFilms(tagged, storedIds, storedNames);
-  const toNotify = excludeNotifiedFilms(
-    brandNew,
-    resolveNotifiedFilmIds(metaData),
-    resolveNotifiedFilmNames(metaData),
+  const toNotify = excludeEnCarteleraFilms(
+    excludeNotifiedFilms(
+      brandNew,
+      resolveNotifiedFilmIds(metaData),
+      resolveNotifiedFilmNames(metaData),
+    ),
   );
 
   await metaRef.set(
@@ -349,7 +361,8 @@ async function processCineSnapshot(cineId) {
 }
 
 /**
- * Poll Metromar + Cervantes, email each subscriber their relevant non-opera novelties.
+ * Poll Metromar + Cervantes, email each subscriber their relevant non-opera,
+ * non-"En cartelera" novelties.
  */
 async function runCarteleraAlert({
   gmailUser,
@@ -462,6 +475,8 @@ module.exports = {
   filmNameKey,
   diffNewFilms,
   excludeNotifiedFilms,
+  isEnCarteleraBadge,
+  excludeEnCarteleraFilms,
   resolveNotifiedFilmIds,
   resolveNotifiedFilmNames,
   filmUrl,

@@ -616,6 +616,8 @@ const {
   filmNameKey,
   diffNewFilms,
   excludeNotifiedFilms,
+  isEnCarteleraBadge,
+  excludeEnCarteleraFilms,
   resolveNotifiedFilmIds,
   resolveNotifiedFilmNames,
   unsubToken,
@@ -688,6 +690,20 @@ assert(excludeNotifiedFilms(notify, ["4"]).length === 0, "exclude already notifi
 assert(excludeNotifiedFilms(notify, ["99"]).length === 1, "exclude keeps unknown");
 const pipeline = excludeNotifiedFilms(diffNewFilms(cur, prev), ["3"]);
 assert(pipeline.length === 2 && pipeline.every((f) => f.filmId !== "3"), "diff+notified pipeline");
+
+assert(isEnCarteleraBadge({ badge: "En cartelera" }), "en cartelera badge");
+assert(isEnCarteleraBadge({ badge: "en cartelera" }), "en cartelera case");
+assert(!isEnCarteleraBadge({ badge: "Estreno 06/11/2026" }), "estreno not en cartelera");
+assert(!isEnCarteleraBadge({ badge: "" }), "empty badge not en cartelera");
+const badgeMix = [
+  { filmId: "10", title: "LUCY", slug: "lucy", badge: "Estreno 06/11/2026" },
+  { filmId: "11", title: "RESIDENT EVIL", slug: "resident-evil", badge: "En cartelera" },
+];
+const badgeNotify = excludeEnCarteleraFilms(badgeMix);
+assert(
+  badgeNotify.length === 1 && badgeNotify[0].filmId === "10",
+  "mail pipeline drops En cartelera",
+);
 
 const sameNameNewId = [
   { filmId: "1", title: "A", slug: "a" },
