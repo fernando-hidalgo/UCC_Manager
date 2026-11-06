@@ -78,7 +78,7 @@ async function ceFetch(pathOrUrl, { method = "GET", jar, body, headers = {} } = 
   return { res, text, jar: nextJar };
 }
 
-/** Hide from cartelera + alerts: óperas, “sesión teta”, TEA, UCC, conciertos (título/sinopsis). */
+/** Hide from cartelera + alerts: óperas, “sesión teta”, TEA, UCC, conciertos, LIVE (título/sinopsis). */
 function isHiddenFilm(film) {
   const blob = `${film?.title || ""} ${film?.slug || ""} ${film?.synopsis || ""} ${film?.description || ""}`;
   return (
@@ -86,7 +86,10 @@ function isHiddenFilm(film) {
     /sesi[oó]n\s*teta/i.test(blob) ||
     /\btea\b/i.test(blob) ||
     /\bucc\b/i.test(blob) ||
-    /concierto/i.test(blob)
+    /concierto/i.test(blob) ||
+    /LIVE\s+en\s+/i.test(blob) ||
+    /:\s*LIVE\b/i.test(blob) ||
+    /--live\b/i.test(blob)
   );
 }
 

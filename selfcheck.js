@@ -666,6 +666,40 @@ assert(
   "queen without synopsis not hidden by title alone",
 );
 assert(!isOpera({ title: "LA BOLA NEGRA", slug: "la-bola-negra", synopsis: "Una comedia." }), "no concierto");
+assert(
+  isOpera({
+    title: "BTS WORLD TOUR 'ARIRANG' IN KAOHSIUNG: LIVE",
+    slug: "bts-world-tour-arirang-in-kaohsiung--live",
+  }),
+  "bts live title colon",
+);
+assert(
+  isOpera({
+    title: "BTS WORLD TOUR",
+    slug: "bts-world-tour-arirang-in-kaohsiung--live",
+  }),
+  "bts live slug double-dash",
+);
+assert(
+  !isOpera({ title: "QUEEN LIVE IN BUDAPEST", slug: "queen-live-in-budapest" }),
+  "single-dash live in slug not hidden",
+);
+assert(
+  isOpera({
+    title: "BTS WORLD TOUR",
+    slug: "bts",
+    synopsis: "LIVE en Metromar Cinemas",
+  }),
+  "live en metromar phrase",
+);
+assert(
+  isOpera({
+    title: "BTS WORLD TOUR",
+    slug: "bts",
+    synopsis: "Termina el año con BTS LIVE en el cine.",
+  }),
+  "live en el cine synopsis",
+);
 
 assert(
   filmNameKey({ title: "EL FINAL DE OAK STREET", slug: "el-final-de-oak-street" }) === "elfinaldeoakstreet",

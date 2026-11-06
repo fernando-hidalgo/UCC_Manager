@@ -1,5 +1,5 @@
 /**
- * Hide films on CompraEntradas /Cine/* (ópera, sesión teta, TEA, UCC, conciertos).
+ * Hide films on CompraEntradas /Cine/* (ópera, sesión teta, TEA, UCC, conciertos, LIVE).
  */
 (function () {
   const ALLOWED = new Set(["10", "48"]);
@@ -16,7 +16,10 @@
       /sesi[oó]n\s*teta/i.test(blob) ||
       /\btea\b/i.test(blob) ||
       /\bucc\b/i.test(blob) ||
-      /concierto/i.test(blob)
+      /concierto/i.test(blob) ||
+      /LIVE\s+en\s+/i.test(blob) ||
+      /:\s*LIVE\b/i.test(blob) ||
+      /--live\b/i.test(blob)
     );
   }
 
